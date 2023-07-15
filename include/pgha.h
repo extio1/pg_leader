@@ -1,15 +1,16 @@
-#ifndef RAFT_H
-#define RAFT_H
+#ifndef PGHA_H
+#define PGHA_H
 
 #include "postgres.h"
+#include "error.h"
 
 /*
  *
  */
-PGDLLEXPORT node_init(Datum);
+PGDLLEXPORT error_code_t node_init(Datum);
 
-void follower_routine();
-void candidate_routine();
-void leader_routine();
+error_code_t follower_routine(void);
+error_code_t candidate_routine(void);
+error_code_t leader_routine(void);
 
-#endif  /* RAFT_H */
+#endif  /* PGHA_H */
