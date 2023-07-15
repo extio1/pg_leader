@@ -17,6 +17,6 @@ typedef GHashTable hash_table;
 typedef int key_t;
 typedef struct sockaddr_in value_t;
 
-hash_table* init(void);
-error_code_t insert(hash_table*, key_t, value_t);
-value_t get(hash_table*, key_t);
+error_code_t init(hash_table*);
+error_code_t insert(hash_table*, key_t*, value_t*);
+value_t* get(hash_table*, const key_t*);

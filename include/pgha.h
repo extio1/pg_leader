@@ -7,10 +7,6 @@
 /*
  *
  */
-PGDLLEXPORT error_code_t node_init(Datum);
-
-error_code_t follower_routine(void);
-error_code_t candidate_routine(void);
-error_code_t leader_routine(void);
+PGDLLEXPORT error_code_t node_routine(Datum);
 
 #endif  /* PGHA_H */

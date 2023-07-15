@@ -10,7 +10,11 @@ typedef enum error_code
     FOPEN_ERROR,
 
     //parser errors
-    WRONG_IPADDR_ERROR
+    WRONG_IPADDR_ERROR,
+
+    //hash table errors
+    INSERT_ERROR
+
 } error_code_t;
 
 #endif /* HA_ERROR_H */

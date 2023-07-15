@@ -9,6 +9,7 @@ parse_cluster_config(const char* path, cluster_t* cluster){
     FILE* config = fopen(path, "r");
 
     int id;
+    size_t n_nodes = 0;
     char id_addr[15];
     char port[5];
     int assigned = 0;
@@ -22,15 +23,18 @@ parse_cluster_config(const char* path, cluster_t* cluster){
             continue;
         } else {
             struct sockaddr_in addr;
-            addr.sin_addr.s_addr = inet_aton(id_addr);
-            if(addr.sin_addr.s_addr == 0){
+            if(inet_aton(id_addr, &addr.sin_addr) == 0){
                 return WRONG_IPADDR_ERROR;
             }
-            addr.sin_port = port;
-            
-            insert(&cluster->node_addresses, id, addr);
+
+            addr.sin_port = atoi(port);
+
+            insert(cluster->node_addresses, &id, &addr);
+            ++n_nodes;
         }
-    };
+    }
+
+    cluster->n_nodes = n_nodes;
 
     fclose(config);
 
