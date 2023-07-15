@@ -53,14 +53,12 @@ _PG_init(void)
 	//	BGWORKER_BACKEND_DATABASE_CONNECTION;
 	worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
 	worker.bgw_restart_time = BGW_NEVER_RESTART;
-	sprintf(worker.bgw_library_name, "raft_ha");
-	sprintf(worker.bgw_function_name, "hello_worker_main");
-    sprintf(worker.bgw_name, "raft ha node main process");
+	sprintf(worker.bgw_library_name, "routines");
+	sprintf(worker.bgw_function_name, "node_init");
+    sprintf(worker.bgw_name, "ha node main process");
 	worker.bgw_notify_pid = 0;
 
     RegisterBackgroundWorker(&worker);
 
     elog(LOG, "HA main proccess succesfully launched");
-
-    follower_routine();
 }

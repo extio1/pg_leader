@@ -1,5 +1,10 @@
 #include "../include/pgha.h"
 
+PGDLLEXPORT void
+node_init(Datum){
+    
+}
+
 void 
 follower_routine()
 {
