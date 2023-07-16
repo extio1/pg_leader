@@ -1,15 +1,15 @@
-#include "../include/hashtable.h"
 #include "../include/ha_types.h"
 #include "../include/parser.h"
 #include "../include/pgha.h"
+#include "../include/error.h"
 
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
 
+cluster_t* hacluster = NULL;
 node_t* node = NULL;
-cluster_t* cluster = NULL;
 
 error_code_t follower_routine(void);
 error_code_t candidate_routine(void);
@@ -20,25 +20,22 @@ node_routine(Datum datum)
 {
     error_code_t error;
 
+    
+    hacluster = malloc(sizeof(cluster_t));    
     node = malloc(sizeof(node_t));
-    cluster = malloc(sizeof(cluster_t));
 
-    if(node == NULL || cluster == NULL){
+    if(node == NULL || hacluster == NULL){
         return MALLOC_ERROR; 
-    } 
-    
-    init(cluster->node_addresses);
+    }  
 
-    if( (error = parse_cluster_config("../config/cluster.config", cluster)) != SUCCESS){
-        return error;
-    }
-    
-    if( (error = parse_node_config("../config/node.config", node)) != SUCCESS ){
+    if( (error = parse_cluster_config("pgha_config/cluster.config", hacluster)) != SUCCESS){
+        print_error_info(error, strerror(errno));
         return error;
     }
 
-    for(int i = 0; i < cluster->n_nodes; ++i){
-        printf("%d %s\n", i, inet_ntoa(get(cluster->node_addresses, &i)->sin_addr));
+    if( (error = parse_node_config("pgha_config/node.config", node)) != SUCCESS ){
+        print_error_info(error, strerror(errno));
+        return error;
     }
 
     return SUCCESS;

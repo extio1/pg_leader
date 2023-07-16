@@ -1,14 +1,16 @@
 #ifndef HA_TYPES_H
 #define HA_TYPES_H
 
-#include "hashtable.h"
+#include <netinet/in.h>
 /*
  * Monotonic term counter
  */
 typedef unsigned long term_t;
 
+typedef struct sockaddr_in socket_node_info_t;
+
 /*
- * Possible states
+ * Possible states.
  */
 typedef enum node_state
 {
@@ -18,7 +20,7 @@ typedef enum node_state
 } node_state_t;
 
 /*
- * Each node condition
+ * Each node condition.
  */
 typedef struct node
 {
@@ -27,9 +29,13 @@ typedef struct node
     term_t current_node_term;
 } node_t;
 
+
+/*
+ * Describes parsed structure of the cluster.
+ */
 typedef struct cluster
 {
-    hash_table* node_addresses;
+    socket_node_info_t* node_addresses;
     size_t n_nodes;
 } cluster_t;
 

@@ -17,4 +17,6 @@ typedef enum error_code
 
 } error_code_t;
 
+void print_error_info(error_code_t, const char*);
+
 #endif /* HA_ERROR_H */
