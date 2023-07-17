@@ -1,0 +1,4 @@
+comment = 'high availability built in. choosing leader algorithm'
+default_version = '1.0'
+module_pathname = '$libdir/pg_leader'
+relocatable = true

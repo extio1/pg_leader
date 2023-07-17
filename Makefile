@@ -1,8 +1,8 @@
-MODULE_big = pgha
-OBJS = src/routines.o src/ha_main.o src/config_parser.o src/glib_hashtable_wrapper.o src/print_error_info.o
+MODULE_big = pg_leader
+OBJS = src/routines.o src/leader_main.o src/config_parser.o src/error.o
 
-EXTENSION = pgha
-DATA = sql/pgha--1.0.sql
+EXTENSION = pg_leader
+DATA = sql/pg_leader--1.0.sql
 
 PG_CFLAGS=-Wall `pkg-config --cflags glib-2.0` `pkg-config --libs glib-2.0`
 

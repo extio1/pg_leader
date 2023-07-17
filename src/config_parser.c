@@ -10,8 +10,9 @@
 
 #include "postgres.h"
 
-error_code_t 
+pl_error_t 
 parse_cluster_config(const char* path, cluster_t* cluster){
+    elog(LOG, "%s", path);
     FILE* config = fopen(path, "r");
 
     size_t n_nodes = 0;
@@ -24,7 +25,7 @@ parse_cluster_config(const char* path, cluster_t* cluster){
     int i = 0;
 
     if(config == NULL){
-        return FOPEN_ERROR;
+        POSIX_THROW(FOPEN_ERROR);
     }
     
    
@@ -36,10 +37,10 @@ parse_cluster_config(const char* path, cluster_t* cluster){
 
     cluster->node_addresses = malloc(sizeof(socket_node_info_t)*n_nodes);
 
-    elog(LOG, "%ld nodes detected in config (cluster.config) file.", n_nodes);
+    elog(LOG, "%ld nodes detected in config (%s) file.", n_nodes, path);
 
     if(cluster->node_addresses == NULL){
-        return MALLOC_ERROR;
+        POSIX_THROW(MALLOC_ERROR);
     }
 
     fseek(config, 0, SEEK_SET);
@@ -50,7 +51,7 @@ parse_cluster_config(const char* path, cluster_t* cluster){
             sscanf(buff, "%s %s", in_addr, port);
 
             if(inet_aton(in_addr, &addr.sin_addr) == 0){
-                return WRONG_IPADDR_ERROR;
+                POSIX_THROW(WRONG_IPADDR_ERROR);
             }
             addr.sin_port = atol(port);
 
@@ -65,10 +66,10 @@ parse_cluster_config(const char* path, cluster_t* cluster){
     fclose(config);
     free(buff);
 
-    return SUCCESS;
+    RETURN_SUCCESS();
 }
 
-error_code_t 
+pl_error_t 
 parse_node_config(const char* path, node_t* node){
     FILE* config = fopen(path, "r");
 
@@ -77,7 +78,7 @@ parse_node_config(const char* path, node_t* node){
     size_t n = 128;
 
     if(config == NULL){
-            return FOPEN_ERROR;
+        POSIX_THROW(FOPEN_ERROR);
     }
 
     while(getline(&buff, &n, config) != -1){
@@ -93,5 +94,39 @@ parse_node_config(const char* path, node_t* node){
     fclose(config);
     free(buff);
 
-    return SUCCESS;
+    RETURN_SUCCESS();
+}
+
+pl_error_t
+parse_timeout_config(const char* path, node_t* node)
+{
+    FILE* config = fopen(path, "r");
+
+    char* buff = malloc(128);
+    char key[32];
+    char value[16];
+    size_t n = 128;
+
+    if(config == NULL){
+        POSIX_THROW(FOPEN_ERROR);
+    }
+
+    while(getline(&buff, &n, config) != -1){
+        sscanf(buff, "%s = %s", key, value);
+        if(strcmp("min_timeout", key) == 0){
+            node->min_timeout = atoi(value);
+        }
+        else if(strcmp("max_timeout", key) == 0){
+            node->max_timeout = atoi(value);
+        }
+        else if(strcmp("hearbeat_period", key) == 0){
+            node->heartbeat_timeout = atoi(value);
+        }
+    }
+
+
+    fclose(config);
+    free(buff);
+
+    RETURN_SUCCESS();
 }
