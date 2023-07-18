@@ -24,10 +24,12 @@ typedef enum error_code
     SOCKET_LISTEN_ERROR,
     SOCKET_ACCEPT_ERROR,
     SOCKET_CONNECT_ERROR,
+    SOCKET_SETOPT_ERROR,
+    SOCKET_READ_ERROR,
+    SOCKET_WRITE_ERROR,
 
     //collection errors
     OUT_OF_BOUND_ERROR,
-
 } error_code_t;
 
 typedef struct error
