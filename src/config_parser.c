@@ -12,7 +12,6 @@
 
 pl_error_t 
 parse_cluster_config(const char* path, cluster_t* cluster){
-    elog(LOG, "%s", path);
     FILE* config = fopen(path, "r");
 
     size_t n_nodes = 0;
