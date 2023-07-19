@@ -1,6 +1,8 @@
 #ifndef HA_ERROR_H
 #define HA_ERROR_H
 
+#include "../log/logger.h"
+
 #include <stdint.h>
 #include <stddef.h>
 
@@ -30,6 +32,9 @@ typedef enum error_code
 
     //collection errors
     OUT_OF_BOUND_ERROR,
+
+    //logical errors
+    WRONG_MESSAGE_DESTINATION_ERROR,
 } error_code_t;
 
 typedef struct error
@@ -81,7 +86,7 @@ extern char message_string[1024];
 #define SAFE(expr)  pl_error = expr;                                                   \
                     if((pl_error.code) != SUCCESS) {                                   \
                         error_info(pl_error);                                          \
-                        elog(LOG, "%s", error_string);                                 \
+                        leadlog("INFO", error_string);                                   \
                     }                                                                  \
 
 /*
@@ -93,6 +98,7 @@ extern char message_string[1024];
                      if((pl_error.code) != SUCCESS) {                                \
                          error_info(pl_error);                                       \
                          elog(FATAL, "%s", error_string);                            \
+                        leadlog("INFO", error_string);                                 \
                      }                                                               \
 
 void print_error_info(error_code_t, const char*);

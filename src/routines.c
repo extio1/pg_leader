@@ -1,4 +1,6 @@
 //local
+#include "../log/logger.h"
+#include "../include/error.h"
 #include "../include/ld_types.h"
 #include "../include/message.h"
 #include "../include/parser.h"
@@ -9,7 +11,9 @@
 
 //posix
 #include <arpa/inet.h>
+#include <errno.h>
 #include <netinet/in.h>
+#include <time.h>
 #include <stdbool.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -29,9 +33,9 @@ PG_FUNCTION_INFO_V1(get_leader_id);
 
 /* --- Income message handlers for each state --- */
 
-static void handle_message_follower();
-static void handle_message_candidate();
-static void handle_message_leader();
+static pl_error_t handle_message_follower();
+static pl_error_t handle_message_candidate();
+static pl_error_t handle_message_leader();
 
 static pl_error_t network_init(void);
 static void main_cycle(void);
@@ -41,7 +45,8 @@ static struct timeval timeval_temp;
                             timeval_temp.tv_sec = 0;                                                                            \
                             timeval_temp.tv_usec = _min + rand()%(_max);                                                        \
                             if( setsockopt(_sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeval_temp, sizeof(struct timeval)) == -1){     \
-                                elog(LOG, "Error while assigning new timeout on socket %d", _sockfd);                           \
+                                leadlog("INFO", "Error while assigning new timeout on socket %d equals %ld usec.",              \
+                                 _sockfd, timeval_temp.tv_usec);                                                                \
                             }                                                                                                   \
 
 #define current_state_wrap(_message) _message.sender_id = node->node_id;                     \
@@ -73,7 +78,7 @@ node_routine(Datum datum)
 {
     hacluster = malloc(sizeof(cluster_t));    
     node = malloc(sizeof(node_t));
-    message_buffer = malloc(sizeif(message_buffer));
+    message_buffer = malloc(sizeof(message_buffer));
 
     if(node == NULL || hacluster == NULL || message_buffer == NULL){
         elog(FATAL, "couldn't malloc for node or cluster or message_buffer structures");
@@ -85,8 +90,7 @@ node_routine(Datum datum)
     STRICT(parse_node_config("pg_leader_config/node.config", node));
 
     node->outsock = malloc(sizeof(socket_fd_t)*hacluster->n_nodes);
-    //node->all_states = malloc(sizeof(node_state_t)*hacluster->n_nodes);
-    if(node->outsock == NULL /*|| node->all_states == NULL*/){
+    if(node->outsock == NULL){
         elog(FATAL, "couldn't malloc for node->outsock or node->all_states");
     }
 
@@ -94,9 +98,16 @@ node_routine(Datum datum)
 
     STRICT(network_init());
 
+    if(init_lead_logger("pg_leader.log") == NULL){
+        elog(LOG, "pg_leader logger has not been inited");
+        perror(errno);
+    }
+
     srand(time(NULL));
 
     routine = follower_routine;
+
+    leadlog("INFO", "Launching in the follower state");
     main_cycle();
 }
 
@@ -109,9 +120,8 @@ void main_cycle(void){
 pl_error_t
 follower_routine(void)
 {
-    elog(LOG, "FOLLOWER");
-    
     int red;
+    
     assign_new_random_timeout(node->insock, node->min_timeout, node->max_timeout);
 
     while(1){
@@ -128,7 +138,7 @@ follower_routine(void)
         } 
         else 
         {
-            handle_message_follower();
+            SAFE(handle_message_follower());
             assign_new_random_timeout(node->insock, node->min_timeout, node->max_timeout);
         }
     }
@@ -138,9 +148,11 @@ follower_routine(void)
 pl_error_t
 candidate_routine(void)
 {
-    elog(LOG, "CANDIDATE");
 
-
+    while(1){
+        leadlog("INFO", "CANDIDATE");
+        sleep(3);
+    }
 
     GOTO_leader(node);
 }
@@ -148,18 +160,16 @@ candidate_routine(void)
 pl_error_t
 leader_routine(void)
 {   
-    elog(LOG, "LEADER");
-
 
 
     GOTO_follower(node);
 }
 
-static void 
+pl_error_t
 handle_message_follower()
 {
     if(message_buffer->sender_term < node->current_node_term){
-        return;
+        RETURN_SUCCESS();
     }
 
     switch (message_buffer->type)
@@ -173,9 +183,10 @@ handle_message_follower()
         break;
     case ElectionRequest:
         if(message_buffer->sender_term > node->current_node_term){
+            message_t response;
+
             node->current_node_term = message_buffer->sender_term;
             
-            message_t response;
             current_state_wrap(response);
             response.type = ElectionResponse;
 
@@ -184,8 +195,26 @@ handle_message_follower()
             }
         }
         break;
+    default:
+        THROW(WRONG_MESSAGE_DESTINATION_ERROR, 
+             "node in follower state can not handle %d type of message",
+             message_buffer->type);
+        break;
     }
 
+    RETURN_SUCCESS();
+}
+
+pl_error_t
+handle_message_candidate()
+{
+    RETURN_SUCCESS();
+}
+
+pl_error_t
+handle_message_leader()
+{
+    RETURN_SUCCESS();
 }
 
 pl_error_t 
