@@ -21,6 +21,10 @@ extern routine_function_t routine;
 /* --- Initial pg_leader node fuction --- */
 PGDLLEXPORT void node_routine(Datum);
 
+/* 
+ * GOTO_<state> are using only inside routine_fuction_t functions.
+ */
+
 #define GOTO_leader(_node_ptr) _node_ptr->state = Leader;           \
                                routine = &leader_routine;           \
                                leadlog("INFO", "LEADER STATE");     \

@@ -29,6 +29,7 @@ typedef enum error_code
     SOCKET_SETOPT_ERROR,
     SOCKET_READ_ERROR,
     SOCKET_WRITE_ERROR,
+    SOCKET_OPT_SET_ERROR,
 
     //collection errors
     OUT_OF_BOUND_ERROR,
@@ -47,7 +48,8 @@ typedef struct error
 
 /*
  * THESE MACROSES ARE NOT THREAD-SAFE 
-*/
+ * because of unsecured global vars
+ */
 
 extern pl_error_t pl_error;
 extern char error_string[1024];
@@ -70,7 +72,9 @@ extern char message_string[1024];
                                              .line = __LINE__,                      \
                                              .file = __FILE__,                      \
                                              .message = message_string              \
-                                             } \
+                                             }                                      \
+
+#define RETHROW(expr) return expr;
 
 #define POSIX_THROW(_code) return (pl_error_t){.code = _code,                   \
                                                .line = __LINE__,                \
@@ -86,7 +90,7 @@ extern char message_string[1024];
 #define SAFE(expr)  pl_error = expr;                                                   \
                     if((pl_error.code) != SUCCESS) {                                   \
                         error_info(pl_error);                                          \
-                        leadlog("INFO", error_string);                                   \
+                        leadlog("INFO", "%s", error_string);                           \
                     }                                                                  \
 
 /*
@@ -98,7 +102,7 @@ extern char message_string[1024];
                      if((pl_error.code) != SUCCESS) {                                \
                          error_info(pl_error);                                       \
                          elog(FATAL, "%s", error_string);                            \
-                        leadlog("INFO", error_string);                                 \
+                         leadlog("INFO", "%s", error_string);                        \
                      }                                                               \
 
 void print_error_info(error_code_t, const char*);

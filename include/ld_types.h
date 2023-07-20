@@ -2,11 +2,8 @@
 #define HA_TYPES_H
 
 #include <netinet/in.h>
-/*
- * Monotonic term counter
- */
-typedef unsigned long term_t;
 
+typedef unsigned long term_t;
 typedef struct sockaddr_in socket_node_info_t;
 typedef int socket_fd_t;
 typedef uint32_t node_id_t;

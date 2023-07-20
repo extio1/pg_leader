@@ -33,10 +33,6 @@ PG_MODULE_MAGIC;
 
 void _PG_init(void);  
 
-PGDLLEXPORT void hello_worker_main(Datum);
-
-/* --- Local vars declaration --- */
-
 /* --- _PG_* --- */
 void
 _PG_init(void)
