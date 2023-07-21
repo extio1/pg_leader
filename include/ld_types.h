@@ -6,7 +6,7 @@
 typedef unsigned long term_t;
 typedef struct sockaddr_in socket_node_info_t;
 typedef int socket_fd_t;
-typedef uint32_t node_id_t;
+typedef int32_t node_id_t;
 
 /*
  * Possible states.

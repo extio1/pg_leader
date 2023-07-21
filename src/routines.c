@@ -9,6 +9,7 @@
 //postgres-based
 #include <fmgr.h>
 #include "postmaster/bgworker.h"
+#include "storage/shmem.h"
 
 //posix
 #include <arpa/inet.h>
@@ -23,6 +24,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+/* --- Local global vars --- */
+
 routine_function_t routine = NULL;
 
 static cluster_t* hacluster = NULL;
@@ -30,6 +33,8 @@ static node_t* node = NULL;
 static message_t* message_buffer;
 
 static unsigned int quorum_size;
+
+static struct timeval timeval_temp;
 
 /* --- SQL used function to display info ---  */
 
@@ -40,13 +45,14 @@ PG_FUNCTION_INFO_V1(get_leader_id);
 /* --- Income message handlers for each state --- */
 
 static pl_error_t handle_message_follower(void);
-static pl_error_t handle_message_candidate(int);
+static pl_error_t handle_message_candidate(unsigned int*);
 static pl_error_t handle_message_leader(void);
+
+/* --- Local auxiliary functions */
 
 static pl_error_t network_init(void);
 static void main_cycle(void);
 
-static struct timeval timeval_temp;
 #define assign_new_random_timeout(_sockfd, _min, _max)                                                                          \
                             timeval_temp.tv_sec = 1;                                                                            \
                             timeval_temp.tv_usec = _min + rand()%(_max-_min);                                                   \
@@ -76,9 +82,8 @@ get_cluster_config(PG_FUNCTION_ARGS)
 }
 Datum
 get_leader_id(PG_FUNCTION_ARGS)
-{
-
-    PG_RETURN_INT32(node->leader_id);
+{   
+    PG_RETURN_INT32(-1);
 }
 
 
@@ -137,8 +142,6 @@ follower_routine(void)
     
     while(1){
         red = read(node->insock, message_buffer, sizeof(message_t));
-        leadlog("INFO", "As follower - got message type of %d from %d with %ld term", 
-        message_buffer->type, message_buffer->sender_id, message_buffer->sender_term);
 
         if(red < 0)
         {
@@ -199,7 +202,7 @@ candidate_routine(void)
         } else {
             node_state_t prev_state = node->state;
 
-            SAFE(handle_message_candidate(electorate_size));
+            SAFE(handle_message_candidate(&electorate_size));
 
             // if handle_message_candidate() changes node state
             // then make return from that state
@@ -223,12 +226,11 @@ leader_routine(void)
         leadlog("ERROR", "Error while assigning new timeout on socket %d equals %ld sec. %ld usec. (%s)",
                 node->insock, heartbeat_timeout.tv_usec, heartbeat_timeout.tv_usec, strerror(errno));
     }
-    leadlog("INFO", "As leader - hearbeat timeout was set to %ld usec.", heartbeat_timeout.tv_usec); 
 
     while(1){
         if( read(node->insock, message_buffer, sizeof(message_t)) == -1 ){
             if( errno == EWOULDBLOCK ){ //timeout
-                leadlog("INFO", "As leader - timeout %ld.", heartbeat_timeout.tv_usec); 
+                leadlog("INFO", "As leader - timeout, make heartbeat %ld.", heartbeat_timeout.tv_usec); 
                 for(int i = 0; i < hacluster->n_nodes; ++i){ // send everyone heartbeat (except for itself)
                     if(i != node->node_id){
                         if( write(node->outsock[i], &heartbeat_message, sizeof(message_t)) == -1){
@@ -309,7 +311,7 @@ handle_message_follower()
 }
 
 pl_error_t
-handle_message_candidate(int electorate_size)
+handle_message_candidate(unsigned int* electorate_size)
 {
     message_type_t type = message_buffer->type;
     int s_term = message_buffer->sender_term;
@@ -329,16 +331,16 @@ handle_message_candidate(int electorate_size)
         }
         break;
     case Heartbeat:
-        //leadlog("INFO", "As candidate - got Heatbeat with %d term (current %ld)", s_term, node->current_node_term); 
+        leadlog("INFO", "As candidate - got Heatbeat with %d term (current %ld)", s_term, node->current_node_term); 
         if(s_term >= node->current_node_term){
             node->current_node_term = s_term;
             GOTO_follower(node);
         }
         break;
     case ElectionResponse:
-        ++electorate_size;
-        leadlog("INFO", "As candidate - got ElectionResponse (current electorate_size %d of %d)", electorate_size, quorum_size); 
-        if(electorate_size >= quorum_size){
+        ++(*electorate_size);
+        leadlog("INFO", "As candidate - got ElectionResponse (current electorate_size %d of %d)", *electorate_size, quorum_size); 
+        if(*electorate_size >= quorum_size){
             GOTO_leader(node);
         }
         break;
@@ -367,7 +369,7 @@ handle_message_leader()
         }
         break;
     case Heartbeat:
-        //leadlog("INFO", "As leader - got Heartbeat (sender term %d, current term %ld)", s_term, node->current_node_term);  
+        leadlog("INFO", "As leader - got Heartbeat (sender term %d, current term %ld)", s_term, node->current_node_term);  
         if(s_term >= node->current_node_term){
             node->current_node_term = s_term;
             GOTO_follower(node);
