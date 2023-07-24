@@ -2,6 +2,8 @@
 #define HA_TYPES_H
 
 #include <netinet/in.h>
+#include <sys/time.h>
+#include <time.h>
 
 typedef unsigned long term_t;
 typedef struct sockaddr_in socket_node_info_t;
@@ -19,6 +21,18 @@ typedef enum node_state
 } node_state_t;
 
 /*
+ * This struct contains fields that can be accessed via shared memory
+ * from other postgres proccesses.
+ */
+struct shared_info_node
+{
+    node_id_t node_id;
+    node_id_t leader_id;
+    term_t current_node_term;
+   // LWLock* lock;
+};
+
+/*
  * Each node condition.
  */
 typedef struct node
@@ -34,9 +48,8 @@ typedef struct node
     node_state_t state;
     //current states of other nodes according to the opinion of this one
     //node_state_t* all_states;
-    node_id_t leader_id;
 
-    term_t current_node_term;
+    struct shared_info_node* shared;
 
     //time in microseconds
     unsigned int min_timeout;

@@ -7,9 +7,7 @@
 #include "../include/pgld.h"
 
 //postgres-based
-#include <fmgr.h>
 #include "postmaster/bgworker.h"
-#include "storage/shmem.h"
 
 //posix
 #include <arpa/inet.h>
@@ -36,12 +34,6 @@ static unsigned int quorum_size;
 
 static struct timeval timeval_temp;
 
-/* --- SQL used function to display info ---  */
-
-PG_FUNCTION_INFO_V1(get_node_id);
-PG_FUNCTION_INFO_V1(get_cluster_config);
-PG_FUNCTION_INFO_V1(get_leader_id);
-
 /* --- Income message handlers for each state --- */
 
 static pl_error_t handle_message_follower(void);
@@ -64,33 +56,18 @@ static void main_cycle(void);
                                 leadlog("INFO", "New timeout = %ld usec. assigned.", timeval_temp.tv_usec)                      \
                             }                                                                                                   \
 
-#define current_node_wrap(_message)  _message.sender_id = node->node_id;                     \
-                                     _message.sender_state = node->state;                    \
-                                     _message.sender_term = node->current_node_term;         \
-
-Datum
-get_node_id(PG_FUNCTION_ARGS)
-{
-    PG_RETURN_INT32(node->node_id);
-}
-Datum
-get_cluster_config(PG_FUNCTION_ARGS)
-{
-    PG_RETURN_CSTRING(
-        "not implemented" 
-    );
-}
-Datum
-get_leader_id(PG_FUNCTION_ARGS)
-{   
-    PG_RETURN_INT32(-1);
-}
-
+#define current_node_wrap(_message)  _message.sender_id = node->node_id;                             \
+                                     _message.sender_state = node->state;                            \
+                                     _message.sender_term = node->shared->current_node_term;         \
 
 PGDLLEXPORT void
 node_routine(Datum datum)
 {
     BackgroundWorkerUnblockSignals();
+
+    if(shared_info_node == NULL){
+        elog(FATAL, "error while initializing shared memory");
+    }
 
     hacluster = malloc(sizeof(cluster_t));    
     node = malloc(sizeof(node_t));
@@ -99,12 +76,14 @@ node_routine(Datum datum)
     if(node == NULL || hacluster == NULL || message_buffer == NULL){
         elog(FATAL, "couldn't malloc for node or cluster or message_buffer structures");
     }  
-    node->current_node_term = 1;
+
+    node->shared = shared_info_node;
     node->state = Follower;
 
     STRICT(parse_cluster_config("pg_leader_config/cluster.config", hacluster));
     STRICT(parse_node_config("pg_leader_config/node.config", node));
 
+    node->shared->node_id = node->node_id;
     node->outsock = malloc(sizeof(socket_fd_t)*hacluster->n_nodes);
     if(node->outsock == NULL){
         elog(FATAL, "couldn't malloc for node->outsock or node->all_states");
@@ -169,7 +148,7 @@ candidate_routine(void)
 
     message_t elect_req;
     elect_req.type = ElectionRequest;
-    ++(node->current_node_term);
+    ++(node->shared->current_node_term);
     current_node_wrap(elect_req);
 
     //send everyone except for itself election request
@@ -177,7 +156,7 @@ candidate_routine(void)
         if(i != node->node_id){
             leadlog("INFO", "As candidate - sending message to %s:%d. (%ld term)", 
                 inet_ntoa(hacluster->node_addresses[i].sin_addr), hacluster->node_addresses[i].sin_port,
-                node->current_node_term);
+                node->shared->current_node_term);
 
             if(write(node->outsock[i], &elect_req, sizeof(message_t)) == -1){
                 leadlog("ERROR", "As candidate - sending message to %s:%d error (%s)", 
@@ -227,6 +206,7 @@ leader_routine(void)
                 node->insock, heartbeat_timeout.tv_usec, heartbeat_timeout.tv_usec, strerror(errno));
     }
 
+    node->shared->leader_id = node->node_id;
     while(1){
         if( read(node->insock, message_buffer, sizeof(message_t)) == -1 ){
             if( errno == EWOULDBLOCK ){ //timeout
@@ -268,7 +248,7 @@ handle_message_follower()
     int s_id = message_buffer->sender_id;
     int s_term = message_buffer->sender_term;
 
-    if(s_term < node->current_node_term){
+    if(s_term < node->shared->current_node_term){
         RETURN_SUCCESS();
     }
 
@@ -277,19 +257,20 @@ handle_message_follower()
 
     case Heartbeat:
         leadlog("INFO", "As follower - got message type of Hearbeat from %d with %d term", s_id, s_term);
-        node->leader_id = s_id;
-        if(s_term > node->current_node_term){
-            node->current_node_term = s_term;
+        node->shared->leader_id = s_id;
+
+        if(s_term > node->shared->current_node_term){
+            node->shared->current_node_term = s_term;
         }
 
         break;
 
     case ElectionRequest:
         leadlog("INFO", "As follower - got message type of ElectionRequest from %d with %d term", s_id, s_term);
-        if(s_term > node->current_node_term){
+        if(s_term > node->shared->current_node_term){
             message_t response;
 
-            node->current_node_term = s_term;
+            node->shared->current_node_term = s_term;
             
             current_node_wrap(response);
             response.type = ElectionResponse;
@@ -316,24 +297,24 @@ handle_message_candidate(unsigned int* electorate_size)
     message_type_t type = message_buffer->type;
     int s_term = message_buffer->sender_term;
 
-    if(s_term < node->current_node_term){
-        leadlog("INFO", "As candidate - %d term of incoming message less that %ld", s_term, node->current_node_term); 
+    if(s_term < node->shared->current_node_term){
+        leadlog("INFO", "As candidate - %d term of incoming message less that %ld", s_term, node->shared->current_node_term); 
         RETURN_SUCCESS();
     }
 
     switch (type)
     {
     case ElectionRequest:
-        leadlog("INFO", "As candidate - got ElectionRequest with %d term (current %ld)", s_term, node->current_node_term); 
-        if(s_term > node->current_node_term){
-            node->current_node_term = s_term;
+        leadlog("INFO", "As candidate - got ElectionRequest with %d term (current %ld)", s_term, node->shared->current_node_term); 
+        if(s_term > node->shared->current_node_term){
+            node->shared->current_node_term = s_term;
             GOTO_follower(node);
         }
         break;
     case Heartbeat:
-        leadlog("INFO", "As candidate - got Heatbeat with %d term (current %ld)", s_term, node->current_node_term); 
-        if(s_term >= node->current_node_term){
-            node->current_node_term = s_term;
+        leadlog("INFO", "As candidate - got Heatbeat with %d term (current %ld)", s_term, node->shared->current_node_term); 
+        if(s_term >= node->shared->current_node_term){
+            node->shared->current_node_term = s_term;
             GOTO_follower(node);
         }
         break;
@@ -355,23 +336,23 @@ handle_message_leader()
     message_type_t type = message_buffer->type;
     int s_term = message_buffer->sender_term;
 
-    if(s_term < node->current_node_term){
+    if(s_term < node->shared->current_node_term){
         RETURN_SUCCESS();
     }
 
     switch (type)
     {
     case ElectionRequest:
-        leadlog("INFO", "As leader - got ElectionRequest (sender term %d, current term %ld)", s_term, node->current_node_term); 
-        if(s_term > node->current_node_term){
-            node->current_node_term = s_term;
+        leadlog("INFO", "As leader - got ElectionRequest (sender term %d, current term %ld)", s_term, node->shared->current_node_term); 
+        if(s_term > node->shared->current_node_term){
+            node->shared->current_node_term = s_term;
             GOTO_follower(node);
         }
         break;
     case Heartbeat:
-        leadlog("INFO", "As leader - got Heartbeat (sender term %d, current term %ld)", s_term, node->current_node_term);  
-        if(s_term >= node->current_node_term){
-            node->current_node_term = s_term;
+        leadlog("INFO", "As leader - got Heartbeat (sender term %d, current term %ld)", s_term, node->shared->current_node_term);  
+        if(s_term >= node->shared->current_node_term){
+            node->shared->current_node_term = s_term;
             GOTO_follower(node);
         }
         break;

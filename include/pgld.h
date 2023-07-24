@@ -2,6 +2,7 @@
 #define PGHA_H
 
 #include "../log/logger.h"
+#include "../include/ld_types.h"
 #include "error.h"
 
 #include "postgres.h"
@@ -17,6 +18,8 @@ extern pl_error_t candidate_routine(void);
 extern pl_error_t leader_routine(void);
 
 extern routine_function_t routine;
+
+extern struct shared_info_node* shared_info_node;
 
 /* --- Initial pg_leader node fuction --- */
 PGDLLEXPORT void node_routine(Datum);

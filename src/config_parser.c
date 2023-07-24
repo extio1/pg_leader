@@ -10,6 +10,7 @@
 
 #include "postgres.h"
 
+
 pl_error_t 
 parse_cluster_config(const char* path, cluster_t* cluster){
     FILE* config = fopen(path, "r");
