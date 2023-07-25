@@ -29,7 +29,6 @@ struct shared_info_node
     node_id_t node_id;
     node_id_t leader_id;
     term_t current_node_term;
-   // LWLock* lock;
 };
 
 /*

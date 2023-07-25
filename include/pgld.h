@@ -2,11 +2,14 @@
 #define PGHA_H
 
 #include "../log/logger.h"
-#include "../include/ld_types.h"
+#include "ld_types.h"
+#include "message.h"
 #include "error.h"
 
 #include "postgres.h"
 
+/* --- Initial pg_leader node fuction --- */
+PGDLLEXPORT void node_routine(Datum);
 
 /* --- Each node condition has a function describing it --- */
 typedef pl_error_t (*routine_function_t)(void);
@@ -17,15 +20,19 @@ extern pl_error_t follower_routine(void);
 extern pl_error_t candidate_routine(void);
 extern pl_error_t leader_routine(void);
 
+/* --- Initialized in init.c --- */
+extern cluster_t* hacluster;
+extern node_t* node;
+extern message_t* message_buffer;
+extern unsigned int quorum_size;
+// Pointer to fuction describes current state
 extern routine_function_t routine;
-
 extern struct shared_info_node* shared_info_node;
-
-/* --- Initial pg_leader node fuction --- */
-PGDLLEXPORT void node_routine(Datum);
+// Main cycle launches routine function in routine var. Initialized in routine.c
+extern void main_cycle(void);
 
 /* 
- * GOTO_<state> are using only inside routine_fuction_t functions.
+ * GOTO_<state> changes state and return from the function
  */
 
 #define GOTO_leader(_node_ptr) _node_ptr->state = Leader;           \
