@@ -56,10 +56,6 @@ static void main_cycle(void);
                                 leadlog("INFO", "New timeout = %ld usec. assigned.", timeval_temp.tv_usec)                      \
                             }                                                                                                   \
 
-#define current_node_wrap(_message)  _message.sender_id = node->node_id;                             \
-                                     _message.sender_state = node->state;                            \
-                                     _message.sender_term = node->shared->current_node_term;         \
-
 PGDLLEXPORT void
 node_routine(Datum datum)
 {
@@ -114,13 +110,11 @@ void main_cycle(void){
 
 pl_error_t
 follower_routine(void)
-{
-    int red;
-    
+{   
     assign_new_random_timeout(node->insock, node->min_timeout, node->max_timeout);
     
     while(1){
-        red = read(node->insock, message_buffer, sizeof(message_t));
+        int red = read(node->insock, message_buffer, sizeof(message_t));
 
         if(red < 0)
         {
@@ -144,21 +138,25 @@ follower_routine(void)
 pl_error_t
 candidate_routine(void)
 {
-    unsigned int electorate_size = 1;
+    unsigned int electorate_size = 1; // counter of nodes voted for us as candidate
 
     message_t elect_req;
-    elect_req.type = ElectionRequest;
+    
     ++(node->shared->current_node_term);
-    current_node_wrap(elect_req);
 
-    //send everyone except for itself election request
+    elect_req.type = ElectionRequest;
+    elect_req.sender_id = node->node_id;
+    elect_req.sender_state = node->state;
+    elect_req.sender_term = node->shared->current_node_term;
+
+    // send everyone except for itself election request
     for(int i = 0; i < hacluster->n_nodes; ++i){
         if(i != node->node_id){
             leadlog("INFO", "As candidate - sending message to %s:%d. (%ld term)", 
                 inet_ntoa(hacluster->node_addresses[i].sin_addr), hacluster->node_addresses[i].sin_port,
                 node->shared->current_node_term);
 
-            if(write(node->outsock[i], &elect_req, sizeof(message_t)) == -1){
+            if( write(node->outsock[i], &elect_req, sizeof(message_t)) == -1 ){
                 leadlog("ERROR", "As candidate - sending message to %s:%d error (%s)", 
                 inet_ntoa(hacluster->node_addresses[i].sin_addr), hacluster->node_addresses[i].sin_port,
                 strerror(errno));
@@ -166,13 +164,14 @@ candidate_routine(void)
         }
     }
 
-    //wait for responces
+    // wait for responces
     while(1){
         int error;
+        // timeout while waiting responces
         assign_new_random_timeout(node->insock, node->min_timeout, node->max_timeout);
 
         if((error = read(node->insock, message_buffer, sizeof(message_t))) == -1){
-            if(errno == EWOULDBLOCK){ //timeout
+            if(errno == EWOULDBLOCK){   //timeout
                 leadlog("INFO", "As candidate - timeout."); 
                 GOTO_candidate(node);
             } else {
@@ -196,46 +195,54 @@ pl_error_t
 leader_routine(void)
 {   
     struct timeval heartbeat_timeout = { .tv_sec = 0, .tv_usec = node->heartbeat_timeout };
-
     message_t heartbeat_message;
-    heartbeat_message.type = Heartbeat;
-    current_node_wrap(heartbeat_message);
 
-    if( setsockopt(node->insock, SOL_SOCKET, SO_RCVTIMEO, &heartbeat_timeout, sizeof(struct timeval)) != 0) {
+    node->shared->leader_id = node->node_id; // this node is a leader now
+
+    heartbeat_message.type = Heartbeat;
+    heartbeat_message.sender_id = node->node_id;
+    heartbeat_message.sender_state = node->state;
+    heartbeat_message.sender_term = node->shared->current_node_term;
+
+    // initialization of timeout for sending heartbeat message each heartbeat_timeout usec.
+    if( setsockopt(node->insock, SOL_SOCKET, SO_RCVTIMEO, &heartbeat_timeout, sizeof(struct timeval)) != 0 ) {
         leadlog("ERROR", "Error while assigning new timeout on socket %d equals %ld sec. %ld usec. (%s)",
                 node->insock, heartbeat_timeout.tv_usec, heartbeat_timeout.tv_usec, strerror(errno));
     }
 
-    node->shared->leader_id = node->node_id;
     while(1){
-        if( read(node->insock, message_buffer, sizeof(message_t)) == -1 ){
+        // if no message got while heartbeat_timeout send heartbeat_message,
+        // otherwise handle got message
+        if( read(node->insock, message_buffer, sizeof(message_t)) == -1 ) {
             if( errno == EWOULDBLOCK ){ //timeout
                 leadlog("INFO", "As leader - timeout, make heartbeat %ld.", heartbeat_timeout.tv_usec); 
+
                 for(int i = 0; i < hacluster->n_nodes; ++i){ // send everyone heartbeat (except for itself)
-                    if(i != node->node_id){
-                        if( write(node->outsock[i], &heartbeat_message, sizeof(message_t)) == -1){
-                            leadlog("ERROR", "Error while sending heartbeat from %s:%d to %s:%d. (%s)",
-                                    inet_ntoa(hacluster->node_addresses[node->node_id].sin_addr), 
-                                    hacluster->node_addresses[node->node_id].sin_port,
-                                    inet_ntoa(hacluster->node_addresses[i].sin_addr), 
-                                    hacluster->node_addresses[i].sin_port,
-                                    strerror(errno));
-                        }
+                    if(i == node->node_id){
+                        continue;
+                    }
+                    if( write(node->outsock[i], &heartbeat_message, sizeof(message_t)) == -1){
+                        leadlog("ERROR", "Error while sending heartbeat to %s:%d. (%s)",
+                                inet_ntoa(hacluster->node_addresses[i].sin_addr), 
+                                hacluster->node_addresses[i].sin_port,
+                                strerror(errno)
+                        );
                     }
                 }
+
             } else {
                 POSIX_THROW(SOCKET_WRITE_ERROR);
             }
         } else {
             node_state_t prev_state = node->state;
 
-                SAFE(handle_message_leader());
+            SAFE(handle_message_leader());
 
-                // if handle_message_leader() changes node state
-                // then make return from that state
-                if(prev_state != node->state){
-                    RETURN_SUCCESS();
-                }
+            // if handle_message_leader() changes node state
+            // then make return from that state
+            if(prev_state != node->state){
+                RETURN_SUCCESS();
+            }
         }
     }
 
@@ -248,7 +255,9 @@ handle_message_follower()
     int s_id = message_buffer->sender_id;
     int s_term = message_buffer->sender_term;
 
+    // ignore messages with lower term
     if(s_term < node->shared->current_node_term){
+        leadlog("INFO", "As follower - %d term of incoming message less that %ld", s_term, node->shared->current_node_term); 
         RETURN_SUCCESS();
     }
 
@@ -257,8 +266,9 @@ handle_message_follower()
 
     case Heartbeat:
         leadlog("INFO", "As follower - got message type of Hearbeat from %d with %d term", s_id, s_term);
-        node->shared->leader_id = s_id;
 
+        // handle what leader changes and assign new term if incoming one is more
+        node->shared->leader_id = s_id;
         if(s_term > node->shared->current_node_term){
             node->shared->current_node_term = s_term;
         }
@@ -267,13 +277,17 @@ handle_message_follower()
 
     case ElectionRequest:
         leadlog("INFO", "As follower - got message type of ElectionRequest from %d with %d term", s_id, s_term);
+
+        // vote for node if we haven't voted in the term (if() condition guarantees this)
         if(s_term > node->shared->current_node_term){
             message_t response;
 
             node->shared->current_node_term = s_term;
             
-            current_node_wrap(response);
             response.type = ElectionResponse;
+            response.sender_id = node->node_id;
+            response.sender_state = node->state;
+            response.sender_term = node->shared->current_node_term;
 
             if(write(node->outsock[s_id], &response, sizeof(message_t)) == -1){
                 POSIX_THROW(SOCKET_WRITE_ERROR);
@@ -284,7 +298,6 @@ handle_message_follower()
 
     case ElectionResponse:
         leadlog("WRONG", "As follower - got message type of ElectionResponse which doesn't handling");
-
         break;
     }
 
@@ -297,6 +310,7 @@ handle_message_candidate(unsigned int* electorate_size)
     message_type_t type = message_buffer->type;
     int s_term = message_buffer->sender_term;
 
+    // ignore messages with lower term
     if(s_term < node->shared->current_node_term){
         leadlog("INFO", "As candidate - %d term of incoming message less that %ld", s_term, node->shared->current_node_term); 
         RETURN_SUCCESS();
@@ -336,6 +350,7 @@ handle_message_leader()
     message_type_t type = message_buffer->type;
     int s_term = message_buffer->sender_term;
 
+    // ignore messages with lower term
     if(s_term < node->shared->current_node_term){
         RETURN_SUCCESS();
     }
