@@ -3,6 +3,7 @@
 #include "../include/pgld.h"
 #include "../include/ld_types.h"
 #include "../include/parser.h"
+#include "../include/firewall.h"
 
 #include "postmaster/bgworker.h"
 
@@ -14,6 +15,10 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+pthread_t firewall_thread;
+pthread_mutex_t message_buffer_mutex;
+pthread_cond_t message_buffer_conditional;
+
 cluster_t* hacluster = NULL;
 node_t* node = NULL;
 unsigned int quorum_size = 0;
@@ -23,7 +28,7 @@ message_t* message_buffer = NULL;
 static pl_error_t network_init(void);
 
 PGDLLEXPORT void
-node_routine(Datum datum)
+node_init_and_launch(Datum datum)
 {
     BackgroundWorkerUnblockSignals();
 
@@ -42,8 +47,8 @@ node_routine(Datum datum)
     node->shared = shared_info_node;
     node->state = Follower;
 
-    STRICT(parse_cluster_config("pg_leader_config/cluster.config", hacluster));
-    STRICT(parse_node_config("pg_leader_config/node.config", node));
+    STRICT_HANDLE(parse_cluster_config("pg_leader_config/cluster.config", hacluster));
+    STRICT_HANDLE(parse_node_config("pg_leader_config/node.config", node));
 
     node->shared->node_id = node->node_id;
     node->outsock = malloc(sizeof(socket_fd_t)*hacluster->n_nodes);
@@ -51,17 +56,30 @@ node_routine(Datum datum)
         elog(FATAL, "couldn't malloc for node->outsock or node->all_states");
     }
 
-    STRICT(parse_timeout_config("pg_leader_config/timeout.config", node));
+    STRICT_HANDLE(parse_timeout_config("pg_leader_config/timeout.config", node));
 
-    STRICT(network_init());
+    STRICT_HANDLE(network_init());
 
     if(init_lead_logger("pg_leader.log") == NULL){
         elog(LOG, "pg_leader logger has not been inited");
     }
 
     quorum_size = ceil((float)(hacluster->n_nodes)/2.0);
+
     srand(time(NULL)); // rand() will be used to assign random timeout
 
+    //Firewall and related reader-writer problem initialization part
+    if( pthread_mutex_init(&message_buffer_mutex, NULL) != 0 ){
+        elog(FATAL, "mutex init error");
+    }
+    if( pthread_cond_init(&message_buffer_conditional, NULL) != 0 ){
+        elog(FATAL, "conditional init error");
+    }
+    if( pthread_create(&firewall_thread, NULL, firewall_routine, NULL) != 0 ){
+        elog(FATAL, "firewall thread creation error");
+    }
+
+    // Node starts in the "follower" state
     routine = follower_routine;
 
     leadlog("INFO", "Launching in the follower state");
@@ -81,7 +99,7 @@ network_init()
 
     bzero(&inaddr, sizeof(struct sockaddr_in));
     inaddr.sin_family = AF_INET;
-    inaddr.sin_addr.s_addr = INADDR_ANY;
+    inaddr.sin_addr.s_addr = INADDR_ANY;//hacluster->node_addresses[node->node_id].sin_addr.s_addr;
     inaddr.sin_port = hacluster->node_addresses[node->node_id].sin_port;
 
     if( bind(insock, (struct sockaddr*)&inaddr, sizeof(struct sockaddr_in)) != 0 ){

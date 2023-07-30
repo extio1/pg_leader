@@ -8,7 +8,7 @@
 
 typedef enum error_code
 {
-    SUCCESS,
+    SUCCESS = 0,
 
     //POSIX errors
     MALLOC_ERROR,
@@ -36,6 +36,10 @@ typedef enum error_code
 
     //logical errors
     WRONG_MESSAGE_DESTINATION_ERROR,
+
+    //io
+    READ_ERROR,
+    WRITE_ERROR,
 } error_code_t;
 
 typedef struct error
@@ -58,7 +62,7 @@ extern char message_string[1024];
 /*
  * Note: error is type pl_error_t.
  */
-#define RETURN_SUCCESS() return (pl_error_t){.code = 0,                     \
+#define RETURN_SUCCESS() return (pl_error_t){.code = SUCCESS,                \
                                              .line = __LINE__,              \
                                              .file = __FILE__,              \
                                              .message = "everything is OK"  \
@@ -87,10 +91,10 @@ extern char message_string[1024];
  *
  * calls elog with LOG level. Don't interrupt the program execution
  */
-#define SAFE(expr)  pl_error = expr;                                                   \
+#define MODERATE_HANDLE(expr)  pl_error = expr;                                        \
                     if((pl_error.code) != SUCCESS) {                                   \
                         error_info(pl_error);                                          \
-                        leadlog("INFO", "%s", error_string);                           \
+                        leadlog("ERROR", "%s", error_string);                          \
                     }                                                                  \
 
 /*
@@ -98,11 +102,11 @@ extern char message_string[1024];
  *
  * calls elog with FATAL level. Abort proccess
  */
-#define STRICT(expr) pl_error = expr;                                                \
+#define STRICT_HANDLE(expr) pl_error = expr;                                         \
                      if((pl_error.code) != SUCCESS) {                                \
                          error_info(pl_error);                                       \
                          elog(FATAL, "%s", error_string);                            \
-                         leadlog("INFO", "%s", error_string);                        \
+                         leadlog("FATAL", "%s", error_string);                       \
                      }                                                               \
 
 void print_error_info(error_code_t, const char*);

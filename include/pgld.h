@@ -9,7 +9,7 @@
 #include "postgres.h"
 
 /* --- Initial pg_leader node fuction --- */
-PGDLLEXPORT void node_routine(Datum);
+PGDLLEXPORT void node_init_and_launch(Datum);
 
 /* --- Each node condition has a function describing it --- */
 typedef pl_error_t (*routine_function_t)(void);
@@ -25,9 +25,11 @@ extern cluster_t* hacluster;
 extern node_t* node;
 extern message_t* message_buffer;
 extern unsigned int quorum_size;
+
 // Pointer to fuction describes current state
 extern routine_function_t routine;
 extern struct shared_info_node* shared_info_node;
+
 // Main cycle launches routine function in routine var. Initialized in routine.c
 extern void main_cycle(void);
 

@@ -68,7 +68,7 @@ _PG_init(void)
 	worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
 	worker.bgw_restart_time = BGW_NEVER_RESTART;
 	sprintf(worker.bgw_library_name, "pg_leader");
-	sprintf(worker.bgw_function_name, "node_routine");
+	sprintf(worker.bgw_function_name, "node_init_and_launch");
     sprintf(worker.bgw_name, "pg_leader node main process");
 	worker.bgw_notify_pid = 0;
 

@@ -4,9 +4,11 @@
 #include "../include/message.h"
 #include "../include/parser.h"
 #include "../include/pgld.h"
+#include "../include/firewall.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <pthread.h>
 #include <time.h>
 #include <stdbool.h>
 #include <sys/time.h>
@@ -14,53 +16,76 @@
 #include <unistd.h>
 
 
+#define SUCCESS -100
+#define TIMEOUT -101
+
 /* --- Income message handlers for each state --- */
 
 static pl_error_t handle_message_follower(void);
 static pl_error_t handle_message_candidate(unsigned int*);
 static pl_error_t handle_message_leader(void);
 
+static int read_message(const int min_timeout, const int max_timeout);
 
-static struct timeval timeval_temp;
-#define assign_new_random_timeout(_sockfd, _min, _max)                                                                          \
-                            timeval_temp.tv_sec = 1;                                                                            \
-                            timeval_temp.tv_usec = _min + rand()%(_max-_min);                                                   \
-                            if( setsockopt(_sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeval_temp, sizeof(struct timeval)) == -1){     \
-                                leadlog("INFO", "Error while assigning new timeout on socket %d equals %ld usec.",              \
-                                 _sockfd, timeval_temp.tv_usec);                                                                \
-                                leadlog("INFO", "%s", strerror(errno));                                                         \
-                            } else {                                                                                            \
-                                leadlog("INFO", "New timeout = %ld usec. assigned.", timeval_temp.tv_usec)                      \
-                            }                                                                                                   \
+static volatile int message_buffer_ready = 0;
+
+void* 
+firewall_routine(void* args){
+    message_t* buffer = malloc(sizeof(message_t));
+
+    while(1){
+        int red = read(node->insock, buffer, sizeof(message_t));
+        
+        struct timeval tv;
+        socklen_t len;
+        getsockopt(node->insock, SOL_SOCKET, SO_RCVTIMEO, &tv, &len);
+
+        elog(LOG, "Firewall reads from %d %d (%ld, %ld)", buffer->sender_id, red, tv.tv_sec, tv.tv_usec);
+
+        if(red < 0) {
+            elog(LOG, "firewall reading error");
+        } 
+        else 
+        {
+            if(message_buffer->sender_term >= node->shared->current_node_term){
+                if(pthread_mutex_trylock(&message_buffer_mutex) == 0){ // if the mutex was acquired
+                    leadlog("INFO", "FIREWALL TAKES MUTEX");
+                    memcpy(message_buffer, buffer, sizeof(message_t));
+                    message_buffer_ready = 1;
+                    if (pthread_cond_signal(&message_buffer_conditional) != 0){
+                        leadlog("INFO", "pthread_cond_signal error");
+                    }
+                    pthread_mutex_unlock(&message_buffer_mutex);
+                    leadlog("INFO", "FIREWALL UNLOCKs Mutex");
+                }
+            }
+        }
+    }
+}
 
 void main_cycle(void){
     while(1){
-        SAFE(routine());
+        MODERATE_HANDLE(routine());
     }
 }
 
 pl_error_t
 follower_routine(void)
 {   
-    assign_new_random_timeout(node->insock, node->min_timeout, node->max_timeout);
-    
-    while(1){
-        int red = read(node->insock, message_buffer, sizeof(message_t));
 
-        if(red < 0)
+    while(1)
+    {
+        int read_code = read_message(node->min_timeout, node->max_timeout);
+
+        if(read_code == TIMEOUT)
         {
-            if (errno == EWOULDBLOCK){ //timeout
-                leadlog("INFO", "As follower - timeout");
-                GOTO_candidate(node);
-            }
-            else{
-                POSIX_THROW(SOCKET_READ_ERROR);
-            }
-        } 
-        else 
+            GOTO_candidate(node);
+        } else if(read_code == SUCCESS) 
         {
-            SAFE(handle_message_follower());
-            assign_new_random_timeout(node->insock, node->min_timeout, node->max_timeout);
+            MODERATE_HANDLE(handle_message_follower());
+        } else 
+        {
+            THROW(READ_ERROR, "Follower read error: %s", strerror(read_code));
         }
     }
 
@@ -81,43 +106,42 @@ candidate_routine(void)
     elect_req.sender_term = node->shared->current_node_term;
 
     // send everyone except for itself election request
-    for(int i = 0; i < hacluster->n_nodes; ++i){
-        if(i != node->node_id){
-            leadlog("INFO", "As candidate - sending message to %s:%d. (%ld term)", 
-                inet_ntoa(hacluster->node_addresses[i].sin_addr), hacluster->node_addresses[i].sin_port,
-                node->shared->current_node_term);
+    for(int i = 0; i < hacluster->n_nodes; ++i)
+    {
+        if(i == node->node_id)
+            continue;
 
-            if( write(node->outsock[i], &elect_req, sizeof(message_t)) == -1 ){
-                leadlog("ERROR", "As candidate - sending message to %s:%d error (%s)", 
-                inet_ntoa(hacluster->node_addresses[i].sin_addr), hacluster->node_addresses[i].sin_port,
-                strerror(errno));
-            }
-        }
+        leadlog("INFO", "As candidate - sending message to %s:%d. (%ld term)", 
+            inet_ntoa(hacluster->node_addresses[i].sin_addr), hacluster->node_addresses[i].sin_port,
+            node->shared->current_node_term);
+
+        if( write(node->outsock[i], &elect_req, sizeof(message_t)) == -1 )
+            leadlog("ERROR", "As candidate - sending message to %s:%d error (%s)", 
+                    inet_ntoa(hacluster->node_addresses[i].sin_addr), hacluster->node_addresses[i].sin_port,
+                    strerror(errno));
     }
 
     // wait for responces
     while(1){
-        int error;
-        // timeout while waiting responces
-        assign_new_random_timeout(node->insock, node->min_timeout, node->max_timeout);
+        int error_code = read_message(node->min_timeout, node->max_timeout);
 
-        if((error = read(node->insock, message_buffer, sizeof(message_t))) == -1){
-            if(errno == EWOULDBLOCK){   //timeout
-                leadlog("INFO", "As candidate - timeout."); 
-                GOTO_candidate(node);
-            } else {
-                POSIX_THROW(SOCKET_READ_ERROR);
-            }
-        } else {
+        if(error_code == TIMEOUT)
+        {
+            GOTO_candidate(node);
+        } else if(error_code == SUCCESS) 
+        {
             node_state_t prev_state = node->state;
 
-            SAFE(handle_message_candidate(&electorate_size));
+            MODERATE_HANDLE(handle_message_candidate(&electorate_size));
 
             // if handle_message_candidate() changes node state
             // then make return from that state
             if(prev_state != node->state){
                 RETURN_SUCCESS();
             }
+        } else 
+        {
+            THROW(READ_ERROR, "Candidate read error %s", strerror(error_code));
         }
     }
 }
@@ -135,45 +159,41 @@ leader_routine(void)
     heartbeat_message.sender_state = node->state;
     heartbeat_message.sender_term = node->shared->current_node_term;
 
-    // initialization of timeout for sending heartbeat message each heartbeat_timeout usec.
-    if( setsockopt(node->insock, SOL_SOCKET, SO_RCVTIMEO, &heartbeat_timeout, sizeof(struct timeval)) != 0 ) {
-        leadlog("ERROR", "Error while assigning new timeout on socket %d equals %ld sec. %ld usec. (%s)",
-                node->insock, heartbeat_timeout.tv_usec, heartbeat_timeout.tv_usec, strerror(errno));
-    }
-
-    while(1){
+    while(1)
+    {
         // if no message got while heartbeat_timeout send heartbeat_message,
         // otherwise handle got message
-        if( read(node->insock, message_buffer, sizeof(message_t)) == -1 ) {
-            if( errno == EWOULDBLOCK ){ //timeout
-                leadlog("INFO", "As leader - timeout, make heartbeat %ld.", heartbeat_timeout.tv_usec); 
+        leadlog("INFO", "As leader - read start."); 
+        int error_code = read_message(node->heartbeat_timeout, node->heartbeat_timeout);
+        if( error_code == TIMEOUT ) {
+            leadlog("INFO", "As leader - timeout, make heartbeat %ld.", heartbeat_timeout.tv_usec); 
 
-                for(int i = 0; i < hacluster->n_nodes; ++i){ // send everyone heartbeat (except for itself)
-                    if(i == node->node_id){
-                        continue;
-                    }
-                    if( write(node->outsock[i], &heartbeat_message, sizeof(message_t)) == -1){
-                        leadlog("ERROR", "Error while sending heartbeat to %s:%d. (%s)",
-                                inet_ntoa(hacluster->node_addresses[i].sin_addr), 
-                                hacluster->node_addresses[i].sin_port,
-                                strerror(errno)
-                        );
-                    }
+            for(int i = 0; i < hacluster->n_nodes; ++i){ // send everyone heartbeat (except for itself)
+                if(i == node->node_id){
+                    continue;
                 }
-
-            } else {
-                POSIX_THROW(SOCKET_WRITE_ERROR);
+                if( write(node->outsock[i], &heartbeat_message, sizeof(message_t)) == -1){
+                    leadlog("ERROR", "Error while sending heartbeat to %s:%d. (%s)",
+                            inet_ntoa(hacluster->node_addresses[i].sin_addr), 
+                            hacluster->node_addresses[i].sin_port,
+                            strerror(errno)
+                    );
+                }
             }
-        } else {
+        } else if( error_code == SUCCESS)
+        {
             node_state_t prev_state = node->state;
 
-            SAFE(handle_message_leader());
+            MODERATE_HANDLE(handle_message_leader());
 
             // if handle_message_leader() changes node state
             // then make return from that state
             if(prev_state != node->state){
                 RETURN_SUCCESS();
             }
+        } else 
+        {
+            THROW(READ_ERROR, "Leader read error %s", strerror(error_code));
         }
     }
 
@@ -311,4 +331,45 @@ handle_message_leader()
     RETURN_SUCCESS();
 }
 
+int read_message(const int min_timeout, const int max_timeout){
+    //assing new random timeout in range
+    int err = 0;
+    struct timespec time_temp;
+    const unsigned long long ms_in_sec = 1000000000LL; // 10^9 
+    leadlog("INFO", "calc extra start");
+    int diff = max_timeout-min_timeout;
+    unsigned long extra = (diff > 0) ? (min_timeout + rand()%(diff)) : min_timeout;
+    leadlog("INFO", "extra %ld", extra);
 
+    if(clock_gettime(CLOCK_REALTIME, &time_temp) != 0){
+        leadlog("ERROR", "clock_gettime error (%s)", strerror(errno));
+    }
+
+    time_temp.tv_nsec += extra % ms_in_sec;
+    time_temp.tv_sec += (time_temp.tv_nsec / ms_in_sec) + 1;
+    time_temp.tv_nsec %= ms_in_sec;
+
+    leadlog("INFO", "sec %ld nsec %ld", time_temp.tv_sec, time_temp.tv_nsec);    
+
+    leadlog("INFO", "Waiting for messages #1");
+
+    pthread_mutex_lock(&message_buffer_mutex);
+    leadlog("INFO", "Waiting for messages #2 (mutex aciquired)");
+    while(!message_buffer_ready && err != ETIMEDOUT){
+        err = pthread_cond_timedwait(&message_buffer_conditional, &message_buffer_mutex, &time_temp);
+    }
+
+    message_buffer_ready = 0;
+    pthread_mutex_unlock(&message_buffer_mutex);
+
+    if( err == 0 ){
+        leadlog("INFO", "Waiting for messages #3 (got message)");
+        return SUCCESS;
+    } else if (err == ETIMEDOUT){
+        leadlog("INFO", "Waiting for messages #3 (timeout)");
+        return TIMEOUT;
+    } else {
+        leadlog("ERROR", "Waiting for messages #3 (%s)", strerror(err));
+        return err;
+    }
+}
