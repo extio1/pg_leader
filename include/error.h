@@ -36,6 +36,10 @@ typedef enum error_code
 
     //logical errors
     WRONG_MESSAGE_DESTINATION_ERROR,
+
+    //io errors
+    WRITE_ERROR,
+    READ_ERROR,
 } error_code_t;
 
 typedef struct error

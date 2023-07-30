@@ -13,6 +13,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#define READ_SUCCESS -100
+#define READ_TIMEOUT -101
+#define READ_ERROR   -102
 
 /* --- Income message handlers for each state --- */
 
@@ -20,18 +23,8 @@ static pl_error_t handle_message_follower(void);
 static pl_error_t handle_message_candidate(unsigned int*);
 static pl_error_t handle_message_leader(void);
 
-
-static struct timeval timeval_temp;
-#define assign_new_random_timeout(_sockfd, _min, _max)                                                                          \
-                            timeval_temp.tv_sec = 1;                                                                            \
-                            timeval_temp.tv_usec = _min + rand()%(_max-_min);                                                   \
-                            if( setsockopt(_sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeval_temp, sizeof(struct timeval)) == -1){     \
-                                leadlog("INFO", "Error while assigning new timeout on socket %d equals %ld usec.",              \
-                                 _sockfd, timeval_temp.tv_usec);                                                                \
-                                leadlog("INFO", "%s", strerror(errno));                                                         \
-                            } else {                                                                                            \
-                                leadlog("INFO", "New timeout = %ld usec. assigned.", timeval_temp.tv_usec)                      \
-                            }                                                                                                   \
+// Returns SUCCESS, TIMEOUT or ERROR. If ERROR, errno variable is set to indicate the error.
+static int read_message(const int min_timeout, const int max_timeout);
 
 void main_cycle(void){
     while(1){
@@ -42,26 +35,21 @@ void main_cycle(void){
 pl_error_t
 follower_routine(void)
 {   
-    assign_new_random_timeout(node->insock, node->min_timeout, node->max_timeout);
-    
     while(1){
-        int red = read(node->insock, message_buffer, sizeof(message_t));
+        int error = read_message(node->min_timeout, node->max_timeout);
 
-        if(red < 0)
-        {
-            if (errno == EWOULDBLOCK){ //timeout
-                leadlog("INFO", "As follower - timeout");
-                GOTO_candidate(node);
-            }
-            else{
-                POSIX_THROW(SOCKET_READ_ERROR);
-            }
-        } 
-        else 
+        if(error == READ_SUCCESS)
         {
             SAFE(handle_message_follower());
-            assign_new_random_timeout(node->insock, node->min_timeout, node->max_timeout);
+        } else if (error == READ_TIMEOUT) 
+        {
+            leadlog("INFO", "As follower - timeout");
+            GOTO_candidate(node);
+        } else 
+        {
+            THROW(READ_ERROR, "Follower error (%s)", strerror(errno));
         }
+
     }
 
 }
@@ -97,18 +85,11 @@ candidate_routine(void)
 
     // wait for responces
     while(1){
-        int error;
+        int error = read_message(node->min_timeout, node->max_timeout);
         // timeout while waiting responces
-        assign_new_random_timeout(node->insock, node->min_timeout, node->max_timeout);
 
-        if((error = read(node->insock, message_buffer, sizeof(message_t))) == -1){
-            if(errno == EWOULDBLOCK){   //timeout
-                leadlog("INFO", "As candidate - timeout."); 
-                GOTO_candidate(node);
-            } else {
-                POSIX_THROW(SOCKET_READ_ERROR);
-            }
-        } else {
+        if(error == READ_SUCCESS)
+        {
             node_state_t prev_state = node->state;
 
             SAFE(handle_message_candidate(&electorate_size));
@@ -118,6 +99,13 @@ candidate_routine(void)
             if(prev_state != node->state){
                 RETURN_SUCCESS();
             }
+        } else if(error == READ_TIMEOUT)
+        {
+            leadlog("INFO", "As candidate - timeout."); 
+            GOTO_candidate(node);
+        } else 
+        {
+            THROW(READ_ERROR, "Candidate error (%s)", strerror(errno));
         }
     }
 }
@@ -135,36 +123,13 @@ leader_routine(void)
     heartbeat_message.sender_state = node->state;
     heartbeat_message.sender_term = node->shared->current_node_term;
 
-    // initialization of timeout for sending heartbeat message each heartbeat_timeout usec.
-    if( setsockopt(node->insock, SOL_SOCKET, SO_RCVTIMEO, &heartbeat_timeout, sizeof(struct timeval)) != 0 ) {
-        leadlog("ERROR", "Error while assigning new timeout on socket %d equals %ld sec. %ld usec. (%s)",
-                node->insock, heartbeat_timeout.tv_usec, heartbeat_timeout.tv_usec, strerror(errno));
-    }
-
     while(1){
         // if no message got while heartbeat_timeout send heartbeat_message,
         // otherwise handle got message
-        if( read(node->insock, message_buffer, sizeof(message_t)) == -1 ) {
-            if( errno == EWOULDBLOCK ){ //timeout
-                leadlog("INFO", "As leader - timeout, make heartbeat %ld.", heartbeat_timeout.tv_usec); 
+        int error = read_message(node->heartbeat_timeout , node->heartbeat_timeout);
 
-                for(int i = 0; i < hacluster->n_nodes; ++i){ // send everyone heartbeat (except for itself)
-                    if(i == node->node_id){
-                        continue;
-                    }
-                    if( write(node->outsock[i], &heartbeat_message, sizeof(message_t)) == -1){
-                        leadlog("ERROR", "Error while sending heartbeat to %s:%d. (%s)",
-                                inet_ntoa(hacluster->node_addresses[i].sin_addr), 
-                                hacluster->node_addresses[i].sin_port,
-                                strerror(errno)
-                        );
-                    }
-                }
-
-            } else {
-                POSIX_THROW(SOCKET_WRITE_ERROR);
-            }
-        } else {
+        if( error == READ_SUCCESS ) 
+        {
             node_state_t prev_state = node->state;
 
             SAFE(handle_message_leader());
@@ -174,6 +139,25 @@ leader_routine(void)
             if(prev_state != node->state){
                 RETURN_SUCCESS();
             }
+        } else if( error == READ_TIMEOUT) 
+        {
+            leadlog("INFO", "As leader - timeout, make heartbeat %ld.", heartbeat_timeout.tv_usec); 
+
+            for(int i = 0; i < hacluster->n_nodes; ++i){ // send everyone heartbeat (except for itself)
+                if(i == node->node_id){
+                    continue;
+                }
+                if( write(node->outsock[i], &heartbeat_message, sizeof(message_t)) == -1){
+                    leadlog("ERROR", "Error while sending heartbeat to %s:%d. (%s)",
+                            inet_ntoa(hacluster->node_addresses[i].sin_addr), 
+                            hacluster->node_addresses[i].sin_port,
+                            strerror(errno)
+                    );
+                }
+            }
+        } else 
+        {
+            THROW(READ_ERROR, "Leader error (%s)", strerror(errno));
         }
     }
 
@@ -182,17 +166,10 @@ leader_routine(void)
 pl_error_t
 handle_message_follower()
 {
-    message_type_t type = message_buffer->type;
     int s_id = message_buffer->sender_id;
     int s_term = message_buffer->sender_term;
 
-    // ignore messages with lower term
-    if(s_term < node->shared->current_node_term){
-        leadlog("INFO", "As follower - %d term of incoming message less that %ld", s_term, node->shared->current_node_term); 
-        RETURN_SUCCESS();
-    }
-
-    switch (type)
+    switch (message_buffer->type)
     {
 
     case Heartbeat:
@@ -238,16 +215,9 @@ handle_message_follower()
 pl_error_t
 handle_message_candidate(unsigned int* electorate_size)
 {
-    message_type_t type = message_buffer->type;
     int s_term = message_buffer->sender_term;
 
-    // ignore messages with lower term
-    if(s_term < node->shared->current_node_term){
-        leadlog("INFO", "As candidate - %d term of incoming message less that %ld", s_term, node->shared->current_node_term); 
-        RETURN_SUCCESS();
-    }
-
-    switch (type)
+    switch (message_buffer->type)
     {
     case ElectionRequest:
         leadlog("INFO", "As candidate - got ElectionRequest with %d term (current %ld)", s_term, node->shared->current_node_term); 
@@ -278,15 +248,9 @@ handle_message_candidate(unsigned int* electorate_size)
 pl_error_t
 handle_message_leader()
 {
-    message_type_t type = message_buffer->type;
     int s_term = message_buffer->sender_term;
 
-    // ignore messages with lower term
-    if(s_term < node->shared->current_node_term){
-        RETURN_SUCCESS();
-    }
-
-    switch (type)
+    switch (message_buffer->type)
     {
     case ElectionRequest:
         leadlog("INFO", "As leader - got ElectionRequest (sender term %d, current term %ld)", s_term, node->shared->current_node_term); 
@@ -304,11 +268,50 @@ handle_message_leader()
         break;
     default:
         THROW(WRONG_MESSAGE_DESTINATION_ERROR, 
-             "node in leader state can not handle %d type of message", type);
+             "node in leader state can not handle %d type of message", message_buffer->type);
         break;
     }
 
     RETURN_SUCCESS();
 }
 
+int 
+read_message(const int min_timeout, const int max_timeout)
+{
+    struct timeval timeout, start, now;
+    int diff = max_timeout - min_timeout;                                 
+    timeout.tv_sec = 0;                                                                                                                                         
+    timeout.tv_usec = (diff > 0) ? (min_timeout + rand()%(diff)) : min_timeout; 
 
+    if( setsockopt(node->insock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(struct timeval)) == -1){     
+        return ERROR;                             
+    }
+
+wait_for_messages:
+    if( gettimeofday(&start, NULL) != 0 )
+       return ERROR;
+
+    if( read(node->insock, message_buffer, sizeof(message_t)) == -1 ) {
+        if(errno = EWOULDBLOCK){
+            return READ_TIMEOUT;
+        } else {
+            return READ_ERROR;
+        }
+    } else {
+        if(message_buffer->sender_term >= node->shared->current_node_term){
+            return READ_SUCCESS;
+        } else {
+            if( gettimeofday(&now, NULL) != 0 ){
+                return READ_ERROR;
+            }
+            timeout.tv_sec -= now.tv_sec-start.tv_sec;
+            timeout.tv_usec -= now.tv_usec-start.tv_usec;
+            if(timeout.tv_sec >= 0 && timeout.tv_usec > 0){
+                goto wait_for_messages;
+            } else {
+                return READ_TIMEOUT;
+            }
+        }
+       return READ_SUCCESS;
+    }
+}
