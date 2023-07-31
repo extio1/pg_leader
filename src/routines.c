@@ -283,11 +283,11 @@ read_message(const int min_timeout, const int max_timeout)
     timeout.tv_sec = 0;                                                                                                                                         
     timeout.tv_usec = (diff > 0) ? (min_timeout + rand()%(diff)) : min_timeout; 
 
+wait_for_messages:
     if( setsockopt(node->insock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(struct timeval)) == -1){     
         return ERROR;                             
     }
 
-wait_for_messages:
     if( gettimeofday(&start, NULL) != 0 )
        return ERROR;
 
