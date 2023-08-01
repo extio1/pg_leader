@@ -1,14 +1,11 @@
 #!/bin/bash
 
-N_NODES=$1
+source $PGLD_PATH/config/pg_leader.config
 
-INTERFACE_NAME=veth
-
-EXTENSION_NAME=pg_leader  #param1
-PATHDB=/home/extio1/db    #param2
 POSTGRES_BIN_PATH=$(pg_config --bindir)
 
-PORT_START=5000
+INTERFACE_NAME=$VETH_ROOT_NAME_PREFIX
+PORT_START=$PGLD_START_PORT
 
 function help {
     echo "+---------------------------------------------------------------------------------------------+"
@@ -41,13 +38,27 @@ function start {
 
     for NODE in "${NODE_LAUNCH_ARRAY[@]}"
     do
-        NAMESPACE_NAME=node"$NODE"_netns
+        NAMESPACE_NAME=$PGLD_NNS_PREFIX"$NODE"                    
         if [ -f /var/run/netns/$NAMESPACE_NAME ]; then
             ((PORT=$PORT_START+$NODE))
-            ##echo "shared_preload_libraries=$EXTENSION_NAME" >> $PATHDB/postgresql.conf
-            echo $PATHDB/db$NODE, $NAMESPACE_NAME: starting
-            sudo ip netns exec $NAMESPACE_NAME bash -c "sudo -u $USER $POSTGRES_BIN_PATH/pg_ctl -D $PATHDB/db$NODE -l $PATHDB/logfile$NODE -o \"-c shared_preload_libraries=$EXTENSION_NAME -p $PORT\" start"
+            echo $PGLD_DB_PATHNAME_PREFIX"$NODE", $NAMESPACE_NAME: starting
+
+            sudo ip netns exec $NAMESPACE_NAME sudo -u $USER $POSTGRES_BIN_PATH/pg_ctl                           \
+                -D $PGLD_DB_PATHNAME_PREFIX"$NODE" -l "$PGLD_DB_PATHNAME_PREFIX"_logfile$NODE                    \
+                -o "-c shared_preload_libraries=$EXTENSION_NAME                                                  \
+                    -c pg_leader.node_id=$NODE                                                                   \
+                    -c pg_leader.n_nodes=$N_NODES                                                                \
+                    -c pg_leader.cluster_conf=\"$IPv4_CLUSTER\"                                                  \
+                    -c pg_leader.min_timeout=$MIN_TIMEOUT                                                        \
+                    -c pg_leader.max_timeout=$MAX_TIMEOUT                                                        \
+                    -c pg_leader.heartbeat_timeout=$HEARTBEAT_TIMEOUT                                            \
+                    -c pg_leader.enable_log=$ENABLE_LOG                                                          \
+                    -c pg_leader.log_file=$LOG_NAME                                                              \
+                    -p $PORT"                                                                                    \
+                start                                                                                            \
+             
             echo
+
         else
             echo "$NAMESPACE_NAME network namespace isn't created. Please launch net_init.sh."
             echo
@@ -70,12 +81,12 @@ function stop {
 
     for NODE in "${NODE_LAUNCH_ARRAY[@]}"
     do
-        NAMESPACE_NAME=node"$NODE"_netns
+        NAMESPACE_NAME=$PGLD_NNS_PREFIX"$NODE"
         if [ -f /var/run/netns/$NAMESPACE_NAME ]; then
             ((PORT=$PORT_START+$NODE))
-            ##echo "shared_preload_libraries=$EXTENSION_NAME" >> $PATHDB/postgresql.conf
-            echo $PATHDB/db$NODE, $NAMESPACE_NAME: stopping
-            sudo ip netns exec $NAMESPACE_NAME bash -c "sudo -u $USER $POSTGRES_BIN_PATH/pg_ctl -D $PATHDB/db$NODE stop"
+            ##echo "shared_preload_libraries=$EXTENSION_NAME" >> $PGLD_DB_PATHNAME_PREFIX/postgresql.conf
+            echo $PGLD_DB_PATHNAME_PREFIX"$NODE", $NAMESPACE_NAME: stopping
+            sudo ip netns exec $NAMESPACE_NAME bash -c "sudo -u $USER $POSTGRES_BIN_PATH/pg_ctl -D $PGLD_DB_PATHNAME_PREFIX"$NODE" stop"
             echo
         else
             echo "$NAMESPACE_NAME network namespace isn't created. Please launch net_init.sh."
@@ -156,10 +167,17 @@ function stat() {
     echo -e "\033[1mNodes status:\033[0m"
 
     for (( NODE=0; NODE<N_NODES; NODE++))
-    do    NAMESPACE_NAME=node"$NODE"_netns
+    do    
+        NAMESPACE_NAME=$PGLD_NNS_PREFIX"$NODE"
         if [ -f /var/run/netns/$NAMESPACE_NAME ]; then
-            echo $PATHDB/db$NODE, $NAMESPACE_NAME: status
-            sudo ip netns exec node"$NODE"_netns bash -c "sudo -u $USER $POSTGRES_BIN_PATH/pg_ctl -D $PATHDB/db$NODE status"
+            echo $PGLD_DB_PATHNAME_PREFIX"$NODE", $NAMESPACE_NAME: status
+            stat=$(pg_ctl -D $PGLD_DB_PATHNAME_PREFIX"$NODE" status | grep pg_ctl -A0)
+
+            if [[ $stat =~ "PID" ]]; then
+                echo -e "\033[42m○ \033[0m" $stat
+            else
+                echo -e "\033[41m○ \033[0m" $stat
+            fi
             echo
         else
             echo "$NAMESPACE_NAME network namespace isn't created. Please launch net_init.sh."
@@ -179,28 +197,17 @@ function flush() {
 
 
 
-####################### main #######################
-
-if [ -z "$N_NODES" ]; then
-    echo "Please enter the num of nodes."
-    exit
-fi
-
-# Create if not exists directory with database clusters
-if [[ !(-d "$PATHDB") ]]; then
-    mkdir $PATHDB
-fi
-echo "Directory $PATHDB EXISTS." 
+####################### begin main() #######################
 
 # Create if not exists database clusters
 for (( i=0; i<N_NODES; i++ ))
 do
-    PATHDB_temp=$PATHDB/db"$i" 
-    if [[ !(-d "$PATHDB") ]]; then
-        initdb -D $PATHDB_temp
-        echo "$PATHDB_temp database cluster CREATED."
+    PGLD_DB_PATHNAME_PREFIX_temp=$PGLD_DB_PATHNAME_PREFIX"$i" 
+    if [[ !(-d "$PGLD_DB_PATHNAME_PREFIX_temp") ]]; then
+        initdb -D $PGLD_DB_PATHNAME_PREFIX_temp
+        echo "$PGLD_DB_PATHNAME_PREFIX_temp database cluster CREATED."
     else
-        echo "$PATHDB_temp database cluster EXISTS."
+        echo "$PGLD_DB_PATHNAME_PREFIX_temp database cluster EXISTS."
     fi
 done
 
@@ -233,4 +240,4 @@ do
 
 done
 
-####################### main #######################
+####################### end main() #######################

@@ -4,6 +4,7 @@
 #include "../include/message.h"
 #include "../include/parser.h"
 #include "../include/pgld.h"
+#include "../include/node.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -64,13 +65,13 @@ candidate_routine(void)
     ++(node->shared->current_node_term);
 
     elect_req.type = ElectionRequest;
-    elect_req.sender_id = node->node_id;
+    elect_req.sender_id = node->shared->node_id;
     elect_req.sender_state = node->state;
     elect_req.sender_term = node->shared->current_node_term;
 
     // send everyone except for itself election request
     for(int i = 0; i < hacluster->n_nodes; ++i){
-        if(i != node->node_id){
+        if(i != node->shared->node_id){
             leadlog("INFO", "As candidate - sending message to %s:%d. (%ld term)", 
                 inet_ntoa(hacluster->node_addresses[i].sin_addr), hacluster->node_addresses[i].sin_port,
                 node->shared->current_node_term);
@@ -116,10 +117,10 @@ leader_routine(void)
     struct timeval heartbeat_timeout = { .tv_sec = 0, .tv_usec = node->heartbeat_timeout };
     message_t heartbeat_message;
 
-    node->shared->leader_id = node->node_id; // this node is a leader now
+    node->shared->leader_id = node->shared->node_id; // this node is a leader now
 
     heartbeat_message.type = Heartbeat;
-    heartbeat_message.sender_id = node->node_id;
+    heartbeat_message.sender_id = node->shared->node_id;
     heartbeat_message.sender_state = node->state;
     heartbeat_message.sender_term = node->shared->current_node_term;
 
@@ -144,7 +145,7 @@ leader_routine(void)
             leadlog("INFO", "As leader - timeout, make heartbeat %ld.", heartbeat_timeout.tv_usec); 
 
             for(int i = 0; i < hacluster->n_nodes; ++i){ // send everyone heartbeat (except for itself)
-                if(i == node->node_id){
+                if(i == node->shared->node_id){
                     continue;
                 }
                 if( write(node->outsock[i], &heartbeat_message, sizeof(message_t)) == -1){
@@ -193,7 +194,7 @@ handle_message_follower()
             node->shared->current_node_term = s_term;
             
             response.type = ElectionResponse;
-            response.sender_id = node->node_id;
+            response.sender_id = node->shared->node_id;
             response.sender_state = node->state;
             response.sender_term = node->shared->current_node_term;
 

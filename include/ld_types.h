@@ -26,6 +26,7 @@ typedef enum node_state
  */
 struct shared_info_node
 {
+    // node id is unique in range 0, ... , n_nodes-1
     node_id_t node_id;
     node_id_t leader_id;
     term_t current_node_term;
@@ -40,8 +41,6 @@ typedef struct node
     socket_fd_t insock; 
     // udp-socket for outcomig messages to other nodes by it id: outsock[id]
     socket_fd_t* outsock; 
-    // node id is unique in range 0, ... , n_nodes-1
-    node_id_t node_id;
 
     //current state of the node
     node_state_t state;
@@ -64,7 +63,7 @@ typedef struct node
 typedef struct cluster
 {
     socket_node_info_t* node_addresses;
-    size_t n_nodes;
+    int32_t n_nodes;
 } cluster_t;
 
 #endif /* HA_TYPES_H */

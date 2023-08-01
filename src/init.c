@@ -3,6 +3,7 @@
 #include "../include/pgld.h"
 #include "../include/ld_types.h"
 #include "../include/parser.h"
+#include "../include/node.h"
 
 #include "postmaster/bgworker.h"
 
@@ -23,8 +24,11 @@ message_t* message_buffer = NULL;
 static pl_error_t network_init(void);
 
 PGDLLEXPORT void
-node_routine(Datum datum)
+node_init(Datum datum)
 {
+    bool log_enable;
+    char* log_name = malloc(1024);
+
     BackgroundWorkerUnblockSignals();
 
     if(shared_info_node == NULL){
@@ -42,27 +46,34 @@ node_routine(Datum datum)
     node->shared = shared_info_node;
     node->state = Follower;
 
-    STRICT(parse_cluster_config("pg_leader_config/cluster.config", hacluster));
-    STRICT(parse_node_config("pg_leader_config/node.config", node));
+    STRICT(parse_cluster_config(hacluster));
+    STRICT(parse_node_config(node));
 
-    node->shared->node_id = node->node_id;
     node->outsock = malloc(sizeof(socket_fd_t)*hacluster->n_nodes);
     if(node->outsock == NULL){
         elog(FATAL, "couldn't malloc for node->outsock or node->all_states");
     }
 
-    STRICT(parse_timeout_config("pg_leader_config/timeout.config", node));
+    STRICT(parse_timeout_config(node));
 
     STRICT(network_init());
 
-    if(init_lead_logger("pg_leader.log") == NULL){
+    STRICT(parse_logger_config(&log_name, &log_enable));
+
+    if(init_lead_logger(log_name, log_enable) == NULL){
         elog(LOG, "pg_leader logger has not been inited");
+    }
+
+    for(int i = 0 ; i < hacluster->n_nodes; ++i){
+        elog(LOG, "%s:%d", inet_ntoa(hacluster->node_addresses[i].sin_addr), hacluster->node_addresses[i].sin_port);
     }
 
     quorum_size = ceil((float)(hacluster->n_nodes)/2.0);
     srand(time(NULL)); // rand() will be used to assign random timeout
 
     routine = follower_routine;
+
+    free(log_name);
 
     leadlog("INFO", "Launching in the follower state");
     main_cycle();
@@ -82,7 +93,7 @@ network_init()
     bzero(&inaddr, sizeof(struct sockaddr_in));
     inaddr.sin_family = AF_INET;
     inaddr.sin_addr.s_addr = INADDR_ANY;
-    inaddr.sin_port = hacluster->node_addresses[node->node_id].sin_port;
+    inaddr.sin_port = hacluster->node_addresses[node->shared->node_id].sin_port;
 
     if( bind(insock, (struct sockaddr*)&inaddr, sizeof(struct sockaddr_in)) != 0 ){
         POSIX_THROW(SOCKET_BIND_ERROR);
@@ -92,7 +103,7 @@ network_init()
 
     //Outcome messages sockets init
     for(int i = 0; i < hacluster->n_nodes; ++i){
-        if(i == node->node_id){
+        if(i == node->shared->node_id){
             node->outsock[i] = -1;
             continue;
         }
@@ -112,7 +123,7 @@ network_init()
 
         if( connect(outsock, (struct sockaddr*)&outaddr, sizeof(struct sockaddr_in)) != 0 ){
             THROW(SOCKET_CONNECT_ERROR, "Error while connecting #%d node to %s:%d",
-                  node->node_id, inet_ntoa(outaddr.sin_addr), outaddr.sin_port);
+                  node->shared->node_id, inet_ntoa(outaddr.sin_addr), outaddr.sin_port);
         }
 
         node->outsock[i] = outsock;
