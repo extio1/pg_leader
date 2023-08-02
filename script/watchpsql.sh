@@ -3,7 +3,7 @@
 # psql connects to the node by UNIX-socket
 # that's why network namespaces doesn't broke everything
 
-source $PGLD_PATH/config/pg_leader.config
+source ../config/pg_leader.config
 
 ID=$1
 

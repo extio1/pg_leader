@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source $PGLD_PATH/config/pg_leader.config
+source ../config/pg_leader.config
 
 ID=$1
 

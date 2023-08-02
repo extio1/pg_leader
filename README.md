@@ -48,7 +48,7 @@ Test stand - `N_NODES` network namespaces with virtual ethernet interfaces. Ther
 ## Config file
 #### Cluster configuration
 1. Test stand configuration. 
-> Initialize `IPv4_CLUSTER` as "192.168.10.10:3500, 192.168.10.11:3501, 192.168.10.12:3502, ...". Because test stand add ip addresses for nodes in network (`NETWORK` parameter) staring with .10 node.
+> Initialize `IPv4_CLUSTER` as "192.168.10.10:port0, 192.168.10.11:port1, 192.168.10.12:port2, ...". Because test stand add ip addresses for nodes in network (`NETWORK` parameter) staring with .10 node. (`NETWORK` assigned as default 192.168.10)
 2. Arbitrary placement. 
 > Assing ip:addr for each `N_NODES` nodes. Every node will be waiting for messages on this socket.
 

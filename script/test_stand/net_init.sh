@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source $PGLD_PATH/config/pg_leader.config
+source ../../config/pg_leader.config
 
 # Create $N_NODES network namespaces 
 for (( i=0; i<N_NODES; i++ ))
