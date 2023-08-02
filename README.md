@@ -32,8 +32,8 @@ Postgres database clusters will be installed in `PGLD_DB_PATHNAME_PREFIX`. Inter
 #### Description
 Test stand - `N_NODES` network namespaces with virtual ethernet interfaces. There is a bridge in root namespace, all veth interfaces connected on it. Network package control implemented by ebtables, adding rules to the FORWARD chain.
 #### Usage
-1. Launch `$ ./script/**_test_stand/net_init.sh_**`. It will create `N_NODES` network namespaces and set up the network.
-2. Use `$ ./script/**_test_stand/ctl.sh_**` for interactive control.
+1. Launch `$ ./script/**_test_stand/net_init.sh`. It will create `N_NODES` network namespaces and set up the network.
+2. Use `$ ./script/**_test_stand/ctl.sh` for interactive control.
     - **h, help, h, ?** - help.
     - **st, start [ALL | NODE IDs]** - pg_ctl start all (some) nodes.
     - **sp, stop [ALL | NODE IDs]** - pg_ctl stop all (some) nodes.
@@ -48,7 +48,7 @@ Test stand - `N_NODES` network namespaces with virtual ethernet interfaces. Ther
 ## Config file
 #### Cluster configuration
 1. Test stand configuration. 
-> Initialize `IPv4_CLUSTER` as "192.168.10.10:port0, 192.168.10.11:port1, 192.168.10.12:port2, ...". Because test stand add ip addresses for nodes in network (`NETWORK` parameter) staring with .10 node. (`NETWORK` assigned as default 192.168.10)
+> Initialize `IPv4_CLUSTER` as "192.168.10.10:port0, 192.168.10.11:port1, 192.168.10.12:port2, ...", use user ports (1024-49151). Test stand adds ip addresses for nodes in network (`NETWORK` parameter) staring with .10 node. (`NETWORK` assigned as default 192.168.10)
 2. Arbitrary placement. 
-> Assing ip:addr for each `N_NODES` nodes. Every node will be waiting for messages on this socket.
+> Assing ip:addr for each `N_NODES` nodes. Every node will be waiting for messages from other nodes on this socket.
 
