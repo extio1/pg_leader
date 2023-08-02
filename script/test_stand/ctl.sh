@@ -15,7 +15,7 @@ function help {
     echo " 3) d, disconnect ONE ANOTHER [both]- prohibit sending packets from ONE to ANOTHER."
     echo "    with [both] parameter prohibit sending in both directs."
     echo " 4) r, reconnect ONE ANOTHER [both] - vice versa as disconnect."
-    echo " 5) b, brainsplit FIRST_GROUP_IDs SECOND_GROUP_IDs - split into two groups where no one node from"
+    echo " 5) b, brainsplit FIRST_GROUP_IDs; SECOND_GROUP_IDs - split into two groups where no one node from"
     echo "    FIRST group cannot send packets to someone in SECOND group and vice versa."
     echo " 6) statistics, stat - network rools stat"
     echo " 7) f, flush - removes all network restrictions"
@@ -117,7 +117,7 @@ function disconnect() {
 
     BOTH=$4
     BOTH=${BOTH,,}
-    if (("$BOTH"=="both")); then
+    if [[ "$BOTH" == "both" ]]; then
         sudo ebtables -A FORWARD -i $INTERFACE_NAME"$3" -o $INTERFACE_NAME"$2" -j DROP
             echo $INTERFACE_NAME"$3" "-x->" $INTERFACE_NAME"$2"
     fi
@@ -147,7 +147,7 @@ function reconnect() {
 
     BOTH=$4
     BOTH=${BOTH,,}
-    if (("$BOTH"=="both")); then
+    if [[ "$BOTH" == "both" ]]; then
         sudo ebtables -D FORWARD -i $INTERFACE_NAME"$3" -o $INTERFACE_NAME"$2" -j DROP
         echo $INTERFACE_NAME"$3" "--->" $INTERFACE_NAME"$2"
     fi

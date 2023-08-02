@@ -42,6 +42,6 @@ do
     sudo ip link set $VETH_ROOT_NAME_PREFIX"$i" master "$BRIDGE_NAME"
 done
 
-bridge link show $BRIDGE_NAME
+sudo bridge link show $BRIDGE_NAME
 
 echo "Network initialization done."

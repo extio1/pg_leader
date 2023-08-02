@@ -6,11 +6,11 @@ PostgreSQL extension. RAFT-based algorithm realization of consensus algorithm of
 - Installed Postgres (and export PATH=/path/to/postgres/bin:$PATH)
 
 ## Contents
-- [/config](https://gitpglab.postgrespro.ru/t.shalnev/pg_leader/-/tree/main/config) contains the configuration file of pg_leader extension.
+- [/config](./config/pg_leader.config) contains the configuration file of pg_leader extension.
 
-- [/script](https://gitpglab.postgrespro.ru/t.shalnev/pg_leader/-/tree/main/script) contains script are using for launching node with pg_leader extension, and one more for observing it via the shell. Scripts are written on bash.
+- [/script](./script) contains script are using for launching node with pg_leader extension, and one more for observing it via the shell. Scripts are written on bash.
     - **_nodelaunch.sh_** for launching the node (postgres+pg_leader)
-    - **_watchpsql.sh_** for observing node condition: it **node ID**, **term** on this node and **leader ID** on this node (leader ID may probably be different on nodes, the aim of this extension that each node has the same leader ID)
+    - **_watchpsql.sh_** for observing node condition: it **node ID**, **term** and **leader ID** on current node (leader ID may probably be different on nodes, the aim of this extension that each node has the same leader ID)
     - **_test_stand/net_init.sh_** are using for initialization network namespaces and network between them. 
     - **_test_stand/ctl.sh_** are using for interactive control of the test stand.
 
@@ -18,8 +18,9 @@ PostgreSQL extension. RAFT-based algorithm realization of consensus algorithm of
     Launching nodes, cluster observing and launching test stand may be carried out using scripts from /script directory.
 
 ##### 0. Clone the repository to the arbitrary directory 
-> `$ git clone https://gitpglab.postgrespro.ru/t.shalnev/pg_leader.git`
-##### 1. Config file editing.
+``$ git clone https://gitpglab.postgrespro.ru/t.shalnev/pg_leader.git``
+##### 1. [Config file](./config/pg_leader.config) editing.
+`N_NODES`
 > To start cluster you should edit params `N_NODES` and `IPv4_CLUSTER` with cluster nodes description.  
 Postgres database clusters will be installed in `PGLD_DB_PATHNAME_PREFIX`. Internal algorithm logger turned on/off by `ENABLE_LOG`. See **"Config file"** for more information.
 ##### 2. Building.
