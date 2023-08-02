@@ -24,4 +24,3 @@ postgres -D "$PGLD_DB_PATHNAME_PREFIX"$ID                                       
              -c pg_leader.enable_log=$ENABLE_LOG                                                          \
              -c pg_leader.log_file=$LOG_NAME                                                              \
              -p $PORT
-

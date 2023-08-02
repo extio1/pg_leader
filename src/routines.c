@@ -13,6 +13,7 @@
 #include <sys/time.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <linux/netlink.h>
 
 #define READ_SUCCESS -100
 #define READ_TIMEOUT -101
@@ -281,7 +282,7 @@ read_message(const int min_timeout, const int max_timeout)
 {
     struct timeval timeout, start, now;
     int diff = max_timeout - min_timeout;                                 
-    timeout.tv_sec = 0;                                                                                                                                         
+    timeout.tv_sec = 0; //(2 + rand()%(5-2) ) * (diff!=0);                                                                                                                                         
     timeout.tv_usec = (diff > 0) ? (min_timeout + rand()%(diff)) : min_timeout; 
 
 wait_for_messages:

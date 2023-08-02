@@ -12,9 +12,9 @@ function help {
     echo " 0) h, help, h, ? - help."
     echo " 1) st, start [ALL | NODE IDs] - pg_ctl start all (some) nodes."
     echo " 2) sp, stop [ALL | NODE IDs] - pg_ctl stop all (some) nodes."
-    echo " 3) d, disconnect [-b] ONE ANOTHER - prohibit sending packets from ONE to ANOTHER."
-    echo "    with -b parameter prohibit sending in both directs."
-    echo " 4) r, reconnect [-b] ONE ANOTHER - vice versa as disconnect."
+    echo " 3) d, disconnect ONE ANOTHER [both]- prohibit sending packets from ONE to ANOTHER."
+    echo "    with [both] parameter prohibit sending in both directs."
+    echo " 4) r, reconnect ONE ANOTHER [both] - vice versa as disconnect."
     echo " 5) b, brainsplit FIRST_GROUP_IDs SECOND_GROUP_IDs - split into two groups where no one node from"
     echo "    FIRST group cannot send packets to someone in SECOND group and vice versa."
     echo " 6) statistics, stat - network rools stat"
@@ -96,7 +96,7 @@ function stop {
 }
 
 function disconnect() {
-    if [[ $# != 3 ]]; then
+    if [[ $# < 3 ]]; then
         echo "Please enter 2 node ids"
         return
     fi
@@ -113,11 +113,20 @@ function disconnect() {
 
     sudo ebtables -A FORWARD -i $INTERFACE_NAME"$2" -o $INTERFACE_NAME"$3" -j DROP
 
-    echo $INTERFACE_NAME"$2" "-x->" $INTERFACE_NAME"$3"
+        echo $INTERFACE_NAME"$2" "-x->" $INTERFACE_NAME"$3"
+
+    BOTH=$4
+    BOTH=${BOTH,,}
+    if (("$BOTH"=="both")); then
+        sudo ebtables -A FORWARD -i $INTERFACE_NAME"$3" -o $INTERFACE_NAME"$2" -j DROP
+            echo $INTERFACE_NAME"$3" "-x->" $INTERFACE_NAME"$2"
+    fi
+
+
 }
 
 function reconnect() {
-    if [[ $# != 3 ]]; then
+    if [[ $# < 3 ]]; then
         echo "Please enter 2 node ids"
         return
     fi
@@ -135,6 +144,13 @@ function reconnect() {
     sudo ebtables -D FORWARD -i $INTERFACE_NAME"$2" -o $INTERFACE_NAME"$3" -j DROP
 
     echo $INTERFACE_NAME"$2" "--->" $INTERFACE_NAME"$3"
+
+    BOTH=$4
+    BOTH=${BOTH,,}
+    if (("$BOTH"=="both")); then
+        sudo ebtables -D FORWARD -i $INTERFACE_NAME"$3" -o $INTERFACE_NAME"$2" -j DROP
+        echo $INTERFACE_NAME"$3" "--->" $INTERFACE_NAME"$2"
+    fi
 }
 
 function brainsplit() {
@@ -195,28 +211,8 @@ function flush() {
     echo "Flushed"
 }
 
-
-
-####################### begin main() #######################
-
-# Create if not exists database clusters
-for (( i=0; i<N_NODES; i++ ))
-do
-    PGLD_DB_PATHNAME_PREFIX_temp=$PGLD_DB_PATHNAME_PREFIX"$i" 
-    if [[ !(-d "$PGLD_DB_PATHNAME_PREFIX_temp") ]]; then
-        initdb -D $PGLD_DB_PATHNAME_PREFIX_temp
-        echo "$PGLD_DB_PATHNAME_PREFIX_temp database cluster CREATED."
-    else
-        echo "$PGLD_DB_PATHNAME_PREFIX_temp database cluster EXISTS."
-    fi
-done
-
-help
-#main cycle
-while :
-do 
-    read -p "$USER/pg_leader #) " READ_TMP
-    READ_TMP=${READ_TMP,,}
+function execute() {
+    READ_TMP=$*
 
     if [[ $READ_TMP == "help"* || $READ_TMP == "h"* || $READ_TMP == "1"* || $READ_TMP == "?"* ]]; then
         help
@@ -237,7 +233,48 @@ do
     elif [[ $READ_TMP == "exit"* || $READ_TMP == "8"* || $READ_TMP == "q"* || $READ_TMP == "quit"* ]]; then
         exit
     fi
+}
 
+function interactive_mode() {
+    help
+    while :
+    do 
+        read -p "$USER/pg_leader #) " READ_TMP
+        READ_TMP=${READ_TMP,,}
+
+        execute $READ_TMP
+    done
+}
+
+function script_mode() {
+    script_file=$1
+    echo $script_file
+
+    while IFS= read -r line
+    do
+        echo "$line"
+    done < $script_file
+}
+
+####################### begin main() #######################
+
+# Create if not exists database clusters
+for (( i=0; i<N_NODES; i++ ))
+do
+    PGLD_DB_PATHNAME_PREFIX_temp=$PGLD_DB_PATHNAME_PREFIX"$i" 
+    if [[ !(-d "$PGLD_DB_PATHNAME_PREFIX_temp") ]]; then
+        initdb -D $PGLD_DB_PATHNAME_PREFIX_temp
+        echo "$PGLD_DB_PATHNAME_PREFIX_temp database cluster CREATED."
+    else
+        echo "$PGLD_DB_PATHNAME_PREFIX_temp database cluster EXISTS."
+    fi
 done
+
+SCRIPT=$1
+if [ -z "$SCRIPT" ]; then
+    interactive_mode
+else
+    script_mode $*
+fi
 
 ####################### end main() #######################
