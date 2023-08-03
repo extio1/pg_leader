@@ -1,6 +1,18 @@
 #!/bin/bash
 
-source ../../config/pg_leader.config
+# checking if enviromental variables set properly
+if [ -z "$PGLD_PATH" ]
+then
+    echo "Please export PGLD_PATH according to README.md" 
+    exit
+fi  
+
+if ! [[ $PATH = *""$PGLD_PATH"/script/"* ]] || ! [[ $PATH == *""$PGLD_PATH"/script/test_stand/"* ]]; then
+    echo "Please export PATH according to README.md"
+    exit
+fi
+
+source $PGLD_PATH/config/pg_leader.config
 
 POSTGRES_BIN_PATH=$(pg_config --bindir)
 
@@ -8,19 +20,20 @@ INTERFACE_NAME=$VETH_ROOT_NAME_PREFIX
 PORT_START=$PGLD_START_PORT
 
 function help {
-    echo "+---------------------------------------------------------------------------------------------+"
+    echo "+-------------------------------------------------------------------------------------------+"
     echo " 0) h, help, h, ? - help."
     echo " 1) st, start [ALL | NODE IDs] - pg_ctl start all (some) nodes."
     echo " 2) sp, stop [ALL | NODE IDs] - pg_ctl stop all (some) nodes."
     echo " 3) d, disconnect ONE ANOTHER [both]- prohibit sending packets from ONE to ANOTHER."
     echo "    with [both] parameter prohibit sending in both directs."
-    echo " 4) r, reconnect ONE ANOTHER [both] - vice versa as disconnect."
-    echo " 5) b, brainsplit FIRST_GROUP_IDs; SECOND_GROUP_IDs - split into two groups where no one node from"
-    echo "    FIRST group cannot send packets to someone in SECOND group and vice versa."
-    echo " 6) statistics, stat - network rools stat"
-    echo " 7) f, flush - removes all network restrictions"
-    echo " 8) exit, q, quit - exit the script"
-    echo "+---------------------------------------------------------------------------------------------+"
+    echo " 4) r, reconnect ONE ANOTHER [both] - same as disconnect but allow."
+    echo " 5) bs, brainsplit FIRST_GROUP_IDs; SECOND_GROUP_IDs - split into two groups where no one node" 
+    echo "    from FIRST group cannot send packets to someone in SECOND group and vice versa."
+    echo " 6) bj, brainjoin FIRST_GROUP_IDs; SECOND_GROUP_IDs - join FIRST_GROUP_IDs and SECOND_GROUP_IDs."
+    echo " 7) statistics, stat - network rools stat"
+    echo " 8) f, flush - removes all network restrictions"
+    echo " 9) exit, q, quit - exit the script"
+    echo "+-------------------------------------------------------------------------------------------+"
 }
 
 function start {
@@ -41,10 +54,10 @@ function start {
         NAMESPACE_NAME=$PGLD_NNS_PREFIX"$NODE"                    
         if [ -f /var/run/netns/$NAMESPACE_NAME ]; then
             ((PORT=$PORT_START+$NODE))
-            echo $PGLD_DB_PATHNAME_PREFIX"$NODE", $NAMESPACE_NAME: starting
+            echo $PGLD_DB_PATHNAME_TEMPLATE"$NODE", $NAMESPACE_NAME: starting
 
             sudo ip netns exec $NAMESPACE_NAME sudo -u $USER $POSTGRES_BIN_PATH/pg_ctl                           \
-                -D $PGLD_DB_PATHNAME_PREFIX"$NODE" -l "$PGLD_DB_PATHNAME_PREFIX"_logfile$NODE                    \
+                -D $PGLD_DB_PATHNAME_TEMPLATE"$NODE" -l "$PGLD_DB_PATHNAME_TEMPLATE"_logfile$NODE                    \
                 -o "-c shared_preload_libraries=$EXTENSION_NAME                                                  \
                     -c pg_leader.node_id=$NODE                                                                   \
                     -c pg_leader.n_nodes=$N_NODES                                                                \
@@ -60,7 +73,7 @@ function start {
             echo
 
         else
-            echo "$NAMESPACE_NAME network namespace isn't created. Please launch net_init.sh."
+            echo "$NAMESPACE_NAME network namespace isn't created. Please launch pgld_stnd_netinit."
             echo
         fi
     done
@@ -84,12 +97,11 @@ function stop {
         NAMESPACE_NAME=$PGLD_NNS_PREFIX"$NODE"
         if [ -f /var/run/netns/$NAMESPACE_NAME ]; then
             ((PORT=$PORT_START+$NODE))
-            ##echo "shared_preload_libraries=$EXTENSION_NAME" >> $PGLD_DB_PATHNAME_PREFIX/postgresql.conf
-            echo $PGLD_DB_PATHNAME_PREFIX"$NODE", $NAMESPACE_NAME: stopping
-            sudo ip netns exec $NAMESPACE_NAME bash -c "sudo -u $USER $POSTGRES_BIN_PATH/pg_ctl -D $PGLD_DB_PATHNAME_PREFIX"$NODE" stop"
+            echo $PGLD_DB_PATHNAME_TEMPLATE"$NODE", $NAMESPACE_NAME: stopping
+            sudo ip netns exec $NAMESPACE_NAME bash -c "sudo -u $USER $POSTGRES_BIN_PATH/pg_ctl -D $PGLD_DB_PATHNAME_TEMPLATE"$NODE" stop"
             echo
         else
-            echo "$NAMESPACE_NAME network namespace isn't created. Please launch net_init.sh."
+            echo "$NAMESPACE_NAME network namespace isn't created. Please launch pgld_stnd_netinit."
             echo
         fi
     done
@@ -154,13 +166,9 @@ function reconnect() {
 }
 
 function brainsplit() {
-    if (( $# != $N_NODES+1 )); then
-        echo "Warning: num of input params less than $N_NODES"
-    fi
-    
     a=$*
     b=$1
-    GROUPS_STR="${a/b/""}"
+    GROUPS_STR="${a/$b/""}"
 
     IFS=";" read -a GROUPS_ARRAY <<< $GROUPS_STR
 
@@ -179,6 +187,28 @@ function brainsplit() {
     echo "{"${GROUPS_ARRAY[0]}" }" "-x->" "{"${GROUPS_ARRAY[1]}" }"
 }
 
+function brainjoin() {
+    a=$*
+    b=$1
+    GROUPS_STR="${a/$b/""}"
+
+    IFS=";" read -a GROUPS_ARRAY <<< $GROUPS_STR
+
+    read -a GROUP1 <<< ${GROUPS_ARRAY[0]}
+    read -a GROUP2 <<< ${GROUPS_ARRAY[1]}
+
+    for NODE1 in "${GROUP1[@]}"
+    do
+        for NODE2 in "${GROUP2[@]}"
+        do
+            sudo ebtables -D FORWARD -i $INTERFACE_NAME"$NODE1" -o $INTERFACE_NAME"$NODE2" -j DROP
+            sudo ebtables -D FORWARD -i $INTERFACE_NAME"$NODE2" -o $INTERFACE_NAME"$NODE1" -j DROP
+        done
+    done 
+
+    echo "{"${GROUPS_ARRAY[0]}" }" "--->" "{"${GROUPS_ARRAY[1]}" }"
+}
+
 function stat() {
     echo -e "\033[1mNodes status:\033[0m"
 
@@ -186,8 +216,8 @@ function stat() {
     do    
         NAMESPACE_NAME=$PGLD_NNS_PREFIX"$NODE"
         if [ -f /var/run/netns/$NAMESPACE_NAME ]; then
-            echo $PGLD_DB_PATHNAME_PREFIX"$NODE", $NAMESPACE_NAME: status
-            stat=$(pg_ctl -D $PGLD_DB_PATHNAME_PREFIX"$NODE" status | grep pg_ctl -A0)
+            echo $PGLD_DB_PATHNAME_TEMPLATE"$NODE", $NAMESPACE_NAME: status
+            stat=$(pg_ctl -D $PGLD_DB_PATHNAME_TEMPLATE"$NODE" status | grep pg_ctl -A0)
 
             if [[ $stat =~ "PID" ]]; then
                 echo -e "\033[42m○ \033[0m" $stat
@@ -196,7 +226,7 @@ function stat() {
             fi
             echo
         else
-            echo "$NAMESPACE_NAME network namespace isn't created. Please launch net_init.sh."
+            echo "$NAMESPACE_NAME network namespace isn't created. Please launch pgld_stnd_netinit."
             echo
         fi
     done
@@ -224,13 +254,15 @@ function execute() {
         disconnect $READ_TMP
     elif [[ $READ_TMP == "reconnect "* || $READ_TMP == "4 "* || $READ_TMP == "r "* ]]; then
         reconnect $READ_TMP
-    elif [[ $READ_TMP == "brainsplit "* || $READ_TMP == "5 "* || $READ_TMP == "b "*  ]]; then
+    elif [[ $READ_TMP == "bs "* || $READ_TMP == "brainsplit "* || $READ_TMP == "5 "*  ]]; then
         brainsplit $READ_TMP 
-    elif [[ $READ_TMP == "stat"*  || $READ_TMP == "statistics"* || $READ_TMP == "6"* ]]; then
+    elif [[ $READ_TMP == "bj "* || $READ_TMP == "brainjoin "* || $READ_TMP == "6 "*  ]]; then
+        brainjoin $READ_TMP 
+    elif [[ $READ_TMP == "stat"*  || $READ_TMP == "statistics"* || $READ_TMP == "7"* ]]; then
         stat
-    elif [[ $READ_TMP == "f"*  || $READ_TMP == "flush"* || $READ_TMP == "7 "* ]]; then
+    elif [[ $READ_TMP == "f"*  || $READ_TMP == "flush"* || $READ_TMP == "8 "* ]]; then
         flush
-    elif [[ $READ_TMP == "exit"* || $READ_TMP == "8"* || $READ_TMP == "q"* || $READ_TMP == "quit"* ]]; then
+    elif [[ $READ_TMP == "exit"* || $READ_TMP == "9 "* || $READ_TMP == "q"* || $READ_TMP == "quit"* ]]; then
         exit
     fi
 }
@@ -261,12 +293,12 @@ function script_mode() {
 # Create if not exists database clusters
 for (( i=0; i<N_NODES; i++ ))
 do
-    PGLD_DB_PATHNAME_PREFIX_temp=$PGLD_DB_PATHNAME_PREFIX"$i" 
-    if [[ !(-d "$PGLD_DB_PATHNAME_PREFIX_temp") ]]; then
-        initdb -D $PGLD_DB_PATHNAME_PREFIX_temp
-        echo "$PGLD_DB_PATHNAME_PREFIX_temp database cluster CREATED."
+    PGLD_DB_PATHNAME_TEMPLATE_temp=$PGLD_DB_PATHNAME_TEMPLATE"$i" 
+    if [[ !(-d "$PGLD_DB_PATHNAME_TEMPLATE_temp") ]]; then
+        initdb -D $PGLD_DB_PATHNAME_TEMPLATE_temp
+        echo "$PGLD_DB_PATHNAME_TEMPLATE_temp database cluster CREATED."
     else
-        echo "$PGLD_DB_PATHNAME_PREFIX_temp database cluster EXISTS."
+        echo "$PGLD_DB_PATHNAME_TEMPLATE_temp database cluster EXISTS."
     fi
 done
 

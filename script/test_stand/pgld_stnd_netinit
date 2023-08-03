@@ -1,6 +1,24 @@
 #!/bin/bash
 
-source ../../config/pg_leader.config
+if [ -z "$PGLD_PATH" ]
+then
+    echo "Please export PGLD_PATH according to README.md" 
+    exit
+fi  
+
+if echo $PGLD_PATH | grep -q "/$" ; then
+    if ! [[ $PATH = *""$PGLD_PATH"/script/"* ]] || ! [[ $PATH == *""$PGLD_PATH"/script/test_stand/"* ]]; then
+        echo "Please export PATH according to README.md"
+        exit
+    fi
+else
+    if ! [[ $PATH = *""$PGLD_PATH"/script/"* ]] || ! [[ $PATH == *""$PGLD_PATH"/script/test_stand/"* ]]; then
+        echo "Please export PATH according to README.md"
+        exit
+    fi
+fi
+
+source $PGLD_PATH/config/pg_leader.config
 
 # Create $N_NODES network namespaces 
 for (( i=0; i<N_NODES; i++ ))

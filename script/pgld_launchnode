@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source ../config/pg_leader.config
+source $PGLD_PATH/config/pg_leader.config
 
 ID=$1
 
@@ -13,7 +13,7 @@ PORT=$(($PGLD_START_PORT + $ID))
 
 echo $ID
 
-postgres -D "$PGLD_DB_PATHNAME_PREFIX"$ID                                                                 \
+postgres -D "$PGLD_DB_PATHNAME_TEMPLATE"$ID                                                                 \
              -c shared_preload_libraries=$EXTENSION_NAME                                                  \
              -c pg_leader.node_id=$ID                                                                     \
              -c pg_leader.n_nodes=$N_NODES                                                                \

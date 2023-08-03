@@ -1,35 +1,60 @@
 # pg_leader
-PostgreSQL extension. RAFT-based algorithm realization of consensus algorithm of choosing the leader.
-
-## Requirement
-- Linux >2.6 (for ebtables)
-- Installed Postgres (and export PATH=/path/to/postgres/bin:$PATH)
+PostgreSQL extension. RAFT-based algorithm realization of consensus algorithm of choosing the leader.   
+The job implements the algorithm of choosing the leader. It has scripts to observe which one ID is leader according to the opinion of some node (the aim that every node has the same opinion). Besides, there is a test stand allows to in interactive mode, by writing your own script control the condition of each node (turned on/off) and network between them. 
 
 ## Contents
 - [/config](./config/pg_leader.config) contains the configuration file of pg_leader extension.
 
-- [/script](./script) contains script are using for launching node with pg_leader extension, and one more for observing it via the shell. Scripts are written on bash.
-    - **_nodelaunch.sh_** for launching the node (postgres+pg_leader)
-    - **_watchpsql.sh_** for observing node condition: it **node ID**, **term** and **leader ID** on current node (leader ID may probably be different on nodes, the aim of this extension that each node has the same leader ID)
-    - **_test_stand/net_init.sh_** are using for initialization network namespaces and network between them. 
-    - **_test_stand/ctl.sh_** are using for interactive control of the test stand.
+- [/script](./script) contains scripts are using for launching node with pg_leader extension, for observing it condition via the shell. Also [./script/test_stand](./script/test_stand) has the test stand. Scripts are written on bash, each name of executable starts with pgld_*.
+    - **_pgld_launchnode_** for launching the node (postgres+pg_leader)
+    - **_pgld_watchnode_** for observing node condition: it **node ID**, **term** and **leader ID** on current node (leader ID may probably be different on nodes, the aim of this extension that each node has the same leader ID)
+    - **_test_stand/pgld_stnd_netinit.sh_** are using for initialization network namespaces and network between them. 
+    - **_test_stand/pgld_stnd_ctl_** are using for interactive control of the test stand.
+    - **_test_stand/pgld_stnd_monitor_** TODO
 
 ## Installation
-    Launching nodes, cluster observing and launching test stand may be carried out using scripts from /script directory.
+>Launching nodes, cluster observing and launching test stand may be carried out using scripts from ./script directory.
 
-##### 0. Clone the repository to the arbitrary directory 
+### 0. Clone the repository to the arbitrary directory 
 ``$ git clone https://gitpglab.postgrespro.ru/t.shalnev/pg_leader.git``
-##### 1. [Config file](./config/pg_leader.config) editing.
-`N_NODES`
-> To start cluster you should edit params `N_NODES` and `IPv4_CLUSTER` with cluster nodes description.  
-Postgres database clusters will be installed in `PGLD_DB_PATHNAME_PREFIX`. Internal algorithm logger turned on/off by `ENABLE_LOG`. See **"Config file"** for more information.
-##### 2. Building.
-> Start Makefile in pg_leader directory `$ make install`.    Now we have the extension installed above Postgres.
-##### 4. Launching.
+### 1. Environment prepare.
+`PGLD_PATH` prepare:   
+``$ export PGLD_PATH=/path/to/cloned/directory/pg_leader/``       
+As well you should have exported to `PATH` /bin directory of postgres:    
+``$ export PATH=/path/to/postgres/bin/:$PATH``  
+To use scripts from any place do:   
+``$ export PATH=$PGLD_PATH/script/:$PGLD_PATH/script/test_stand/:$PATH``
+```shell
+export PGLD_PATH=/path/to/cloned/directory/pg_leader/
+export PATH=/path/to/postgres/bin/:$PATH
+export PATH=$PGLD_PATH/script/:$PGLD_PATH/script/test_stand/:$PATH
+```
+For more comfortable use you may append these strings to your shell configuration file - for instance, `~/.bashrc` for Bash, to have these exports in each shell launch.
+
+### 2. Building.
+``$ cd $PGLD_PATH``    
+And launch `Makefile` in pg_leader directory  
+``$ make install``  
+**Now we have the extension installed above Postgres.**
+
+### 3. [Config file](./config/pg_leader.config) editing.
+> Config file is out of the box ready to launch 5 nodes using test stand.   
+
+Most important parameters:  
+* `N_NODES` - num of nodes inside the cluster.    
+* `IPv4_CLUSTER` - ip_address:port for each node.     
+* `PGLD_DB_PATHNAME_TEMPLATE` - path template where postgres database clusters will be initialized. 
+* `ENABLE_LOG` - turn on\off logging of the algorithm.
+* `LOG_NAME` - the path of log relatively `PGLD_DB_PATHNAME_TEMPLATE` directory.
+> The full desctiprion of config file see in [certain chapter](#config-file). 
+
+
+### 4. Launching.
 > There is two ways to launch.
 1. Launch each node by **_nodelaunch.sh [NODE_ID]_**
 2. Launch test stand.
-### Test stand (Linux only)
+
+## Test stand (Linux only)
 #### Description
 Test stand - `N_NODES` network namespaces with virtual ethernet interfaces. There is a bridge in root namespace, all veth interfaces connected on it. Network package control implemented by ebtables, adding rules to the FORWARD chain.
 #### Usage

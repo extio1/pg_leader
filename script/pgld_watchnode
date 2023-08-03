@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# checking if enviromental variables set properly
+if [ -z "$PGLD_PATH" ]
+then
+    echo "Please export PGLD_PATH according to README.md" 
+    exit
+fi  
+
+if ! [[ $PATH = *""$PGLD_PATH"/script/"* ]] || ! [[ $PATH == *""$PGLD_PATH"/script/test_stand/"* ]]; then
+    echo "Please export PATH according to README.md"
+    exit
+fi
+
+# psql connects to the node by UNIX-socket
+# that's why network namespaces doesn't broke psql connection
+
+source $PGLD_PATH/config/pg_leader.config
+
+ID=$1
+
+if [ -z "$ID" ]; then
+    echo "Please enter the ID of the node."
+    exit
+fi
+
+PORT=$(($PGLD_START_PORT + $ID))    
+
+psql postgres -p $PORT -c 'CREATE EXTENSION '$EXTENSION_NAME
+watch -n1 -t "echo 'SELECT get_node_info();' | psql postgres -p $PORT" 

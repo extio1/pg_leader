@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# checking if enviromental variables set properly
+if [ -z "$PGLD_PATH" ]
+then
+    echo "Please export PGLD_PATH according to README.md" 
+    exit
+fi  
+
+if ! [[ $PATH = *""$PGLD_PATH"/script/"* ]] || ! [[ $PATH == *""$PGLD_PATH"/script/test_stand/"* ]]; then
+    echo "Please export PATH according to README.md"
+    exit
+fi
+
+source $PGLD_PATH/config/pg_leader.config
+
+lines=$(tput lines)  # the number of lines of the present terminal window.
+cols=$(tput cols)  # the number of columns of the present terminal window.
+
+echo $lines $cols
+
+n_lines=$((lines/2)) # 2 node statuses in vertical
+n_cols=$((cols/5)) # 6 node statuses in horizontal
+
+echo $n_lines $n_cols
+
+session="pg_leader_monitor"
+
+sessionexists=$(tmux list-sessions | grep $session)
+
+counter=0
+
+if [ -z "$sessionexists" ]
+then
+    tmux new-session -d -s $session
+    # 0 - the initial window
+
+    tmux split-window -t0 -b -p 50
+
+    tmux split-window -t0 -h -l $n_cols
+    tmux split-window -t0 -h -l $n_cols
+    tmux split-window -t0 -h -l $n_cols
+    tmux split-window -t0 -h -l $n_cols
+
+    tmux split-window -t5 -h -p 50
+    # launching ctl
+    tmux send-keys -t6 'export PGLD_PATH='$PGLD_PATH Enter
+    tmux send-keys -t6 'cd $PGLD_PATH' Enter
+    tmux send-keys -t6 'clear' Enter
+    tmux send-keys -t6 './script/test_stand/pgld_stnd_ctl' Enter
+
+    tmux split-window -t0 -v -p 70
+    tmux split-window -t2 -v -p 70
+    tmux split-window -t4 -v -p 70
+    tmux split-window -t6 -v -p 70
+    tmux split-window -t8 -v -p 70
+
+    tmux split-window -t10 -h -p 50
+
+    tmux split-window -t10 -v -p 70
+    tmux split-window -t12 -v -p 70
+
+    #launching pgld_watchnode
+
+    for ((i = 0; i < N_NODES; i++)) do
+        window=$((i*2))
+        tmux send-keys -t$window 'export PGLD_PATH='$PGLD_PATH Enter
+        tmux send-keys -t$window 'cd $PGLD_PATH' Enter
+        tmux send-keys -t$window './script/pgld_watchnode '$i Enter
+    done
+fi  
+
+tmux attach-session -t $session
