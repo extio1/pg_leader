@@ -1,5 +1,17 @@
 #!/bin/bash
 
+# checking if enviromental variables set properly
+if [ -z "$PGLD_PATH" ]
+then
+    echo "Please export PGLD_PATH according to README.md" 
+    exit
+fi  
+
+if ! [[ $PATH = *""$PGLD_PATH"/script/"* ]] || ! [[ $PATH == *""$PGLD_PATH"/script/test_stand/"* ]]; then
+    echo "Please export PATH according to README.md"
+    exit
+fi
+
 source $PGLD_PATH/config/pg_leader.config
 
 ID=$1
@@ -9,11 +21,30 @@ if [ -z "$ID" ]; then
     exit
 fi
 
+DBNAME="$PGLD_DB_PATHNAME_TEMPLATE"$ID
+if [[ !(-d "$DBNAME") ]]; then
+    echo "$DBNAME is not created. initdb it? (y/n):"
+    read confirm
+    confirm=${confirm,,}
+
+    if [[ "$confirm" == "y" ]]; then
+        initdb -D "$DBNAME"
+        echo "$DBNAME database cluster CREATED."
+    elif [[ "$confirm" == "n" ]]; then
+        echo Exit
+        exit
+    else
+        echo Unknown answer, use 'y' or 'n'
+        exit
+    fi
+
+else
+    echo "$DBNAME database cluster EXISTS."
+fi
+
 PORT=$(($PGLD_START_PORT + $ID))
 
-echo $ID
-
-postgres -D "$PGLD_DB_PATHNAME_TEMPLATE"$ID                                                                 \
+postgres -D "$PGLD_DB_PATHNAME_TEMPLATE"$ID                                                               \
              -c shared_preload_libraries=$EXTENSION_NAME                                                  \
              -c pg_leader.node_id=$ID                                                                     \
              -c pg_leader.n_nodes=$N_NODES                                                                \

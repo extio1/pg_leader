@@ -11,7 +11,6 @@ if ! [[ $PATH = *""$PGLD_PATH"/script/"* ]] || ! [[ $PATH == *""$PGLD_PATH"/scri
     echo "Please export PATH according to README.md"
     exit
 fi
-
 source $PGLD_PATH/config/pg_leader.config
 
 lines=$(tput lines)  # the number of lines of the present terminal window.
@@ -35,7 +34,7 @@ then
     tmux new-session -d -s $session
     # 0 - the initial window
 
-    tmux split-window -t0 -b -p 50
+    tmux split-window -t0 -v -p 50
 
     tmux split-window -t0 -h -l $n_cols
     tmux split-window -t0 -h -l $n_cols
@@ -43,6 +42,7 @@ then
     tmux split-window -t0 -h -l $n_cols
 
     tmux split-window -t5 -h -p 50
+    
     # launching ctl
     tmux send-keys -t6 'export PGLD_PATH='$PGLD_PATH Enter
     tmux send-keys -t6 'cd $PGLD_PATH' Enter
