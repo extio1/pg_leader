@@ -32,7 +32,8 @@ function help {
     echo " 6) bj, brainjoin FIRST_GROUP_IDs; SECOND_GROUP_IDs - join FIRST_GROUP_IDs and SECOND_GROUP_IDs."
     echo " 7) statistics, stat - network rools stat"
     echo " 8) f, flush - removes all network restrictions"
-    echo " 9) exit, q, quit - exit the script"
+    echo " 9) ex, execute_command [SCRIPT] - execute_command [SCRIPT] script."
+    echo " 10) exit, q, quit - exit the script"
     echo "+-------------------------------------------------------------------------------------------+"
 }
 
@@ -125,7 +126,7 @@ function disconnect() {
 
     sudo ebtables -A FORWARD -i $INTERFACE_NAME"$2" -o $INTERFACE_NAME"$3" -j DROP
 
-        echo $INTERFACE_NAME"$2" "-x->" $INTERFACE_NAME"$3"
+    echo $INTERFACE_NAME"$2" "-x->" $INTERFACE_NAME"$3"
 
     BOTH=$4
     BOTH=${BOTH,,}
@@ -241,7 +242,28 @@ function flush() {
     echo "Flushed"
 }
 
-function execute() {
+function interactive_mode() {
+    help
+    while :
+    do 
+        read -p "$USER/pg_leader #) " READ_TMP
+        READ_TMP=${READ_TMP,,}
+
+        execute_command $READ_TMP
+    done
+}
+
+function script_mode() {
+    script_file=$*
+
+    echo $script_file start.
+
+    $PGLD_PATH/script/templates/$script_file -q
+
+    echo $script_file done.
+}
+
+function execute_command() {
     READ_TMP=$*
 
     if [[ $READ_TMP == "help"* || $READ_TMP == "h"* || $READ_TMP == "1"* || $READ_TMP == "?"* ]]; then
@@ -262,33 +284,36 @@ function execute() {
         stat
     elif [[ $READ_TMP == "f"*  || $READ_TMP == "flush"* || $READ_TMP == "8 "* ]]; then
         flush
-    elif [[ $READ_TMP == "exit"* || $READ_TMP == "9 "* || $READ_TMP == "q"* || $READ_TMP == "quit"* ]]; then
+    elif [[ $READ_TMP == "ex "* || $READ_TMP == "9 "* || $READ_TMP == "execute "* ]]; then
+        read -a readstr <<< $READ_TMP
+        READ_TMP="${READ_TMP/$readstr/""}"
+
+        script_mode $READ_TMP
+    elif [[ $READ_TMP == "exit"* || $READ_TMP == "10 "* || $READ_TMP == "q"* || $READ_TMP == "quit"* ]]; then
         exit
     fi
 }
 
-function interactive_mode() {
-    help
-    while :
-    do 
-        read -p "$USER/pg_leader #) " READ_TMP
-        READ_TMP=${READ_TMP,,}
-
-        execute $READ_TMP
-    done
-}
-
-function script_mode() {
-    script_file=$1
-    echo $script_file
-
-    while IFS= read -r line
-    do
-        echo "$line"
-    done < $script_file
-}
 
 ####################### begin main() #######################
+
+mode=interactive
+silect=false
+while getopts "s:c:q" arg; do
+  case $arg in
+    s)
+        mode=script
+        script_arg=${OPTARG}
+        ;;
+    c)
+        mode=command
+        command_arg=${OPTARG}
+        ;;
+    q)
+        silent=true
+        ;;
+  esac
+done
 
 # Create if not exists database clusters
 for (( i=0; i<N_NODES; i++ ))
@@ -298,15 +323,25 @@ do
         initdb -D $PGLD_DB_PATHNAME_TEMPLATE_temp
         echo "$PGLD_DB_PATHNAME_TEMPLATE_temp database cluster CREATED."
     else
-        echo "$PGLD_DB_PATHNAME_TEMPLATE_temp database cluster EXISTS."
+        if ! $silent
+        then
+             echo "$PGLD_DB_PATHNAME_TEMPLATE_temp database cluster EXISTS."
+        fi
     fi
 done
 
-SCRIPT=$1
-if [ -z "$SCRIPT" ]; then
-    interactive_mode
-else
-    script_mode $*
-fi
+
+case $mode in
+    interactive)
+        interactive_mode
+        ;;
+    script)
+        script_mode $script_arg
+        ;;
+    command)
+        execute_command $command_arg
+        ;;
+esac
+
 
 ####################### end main() #######################

@@ -281,7 +281,7 @@ int
 read_message(const int min_timeout, const int max_timeout)
 {
     struct timeval timeout, start, now;
-    int diff = max_timeout - min_timeout;                                 
+    int diff = max_timeout - min_timeout;                        
     timeout.tv_sec = 0; //(2 + rand()%(5-2) ) * (diff!=0);                                                                                                                                         
     timeout.tv_usec = (diff > 0) ? (min_timeout + rand()%(diff)) : min_timeout; 
 

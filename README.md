@@ -56,7 +56,8 @@ For more comfortable use you may append these strings to your shell configuratio
 Test stand - `N_NODES` network namespaces with virtual ethernet interfaces. There is a bridge in root namespace, all veth interfaces connected on it. Network package control implemented by ebtables, adding rules to the FORWARD chain.
 #### Usage
 1. Launch ``$ pgld_stnd_netinit`` . It will create `N_NODES` network namespaces and set up the network.
-2. Use `$ pg_stnd_ctl` for interactive control.
+2. Lanch ```$ pgld_stnd_monitor```.
+3. Use `$ pg_stnd_ctl` for interactive control.
     - **h, help, h, ?** - help.
 
     - **st, start [ALL | NODE IDs]** - pg_ctl start all (some) nodes.
@@ -77,8 +78,6 @@ Test stand - `N_NODES` network namespaces with virtual ethernet interfaces. Ther
 
     - **exit, q, quit** - exit the script
 
-3. Use ``$ pgld_watchnode [NODE_ID]`` , where NODE_ID from `0` to `N_NODES`-1
-
 ## Config file
 **Parameters**:
 * **General.**
@@ -94,7 +93,7 @@ Test stand - `N_NODES` network namespaces with virtual ethernet interfaces. Ther
     * `MIN_TIMEOUT` - minimal timeout in follower, candidate state.
     * `MAX_TIMEOUT` - maximal timeout in follower, candidate state.
     * `HEARTBEAT_TIMEOUT` - each **HEARTBEAT_TIMEOUT** node in leader state. will send hearbeat message.
-    
+
 * **Test stand**
     * `PGLD_NNS_PREFIX` - name of namespaces creating while pgld_stnd_netinit.
     * `VETH_ROOT_NAME_PREFIX` - veth interface name in root namespace.

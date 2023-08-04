@@ -1,0 +1,8 @@
+#!/bin/bash
+
+A=$1
+B=$2
+
+echo disconnect $A $B
+
+pgld_stnd_ctl -c "disconnect $A $B"

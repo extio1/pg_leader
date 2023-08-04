@@ -22,7 +22,7 @@ get_node_info(PG_FUNCTION_ARGS)
 {   
     char* buffer = palloc(256);
     
-    sprintf(buffer, "leader - %d; node #%d, term #%ld", 
+    sprintf(buffer, "leader - %d;\n node #%d,\n term #%ld\n", 
             shared_info_node->leader_id, shared_info_node->node_id, 
             shared_info_node->current_node_term);
 
