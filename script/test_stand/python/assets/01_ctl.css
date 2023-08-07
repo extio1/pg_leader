@@ -1,0 +1,11 @@
+.ctl{
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    margin-top: 0;
+    background-color: rgba(217, 66, 169, 0.13);
+}
+
+.ctl:hover{
+    background-color: rgba(217, 66, 169, 0.766);
+}

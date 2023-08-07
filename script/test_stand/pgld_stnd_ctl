@@ -14,6 +14,8 @@ fi
 
 source $PGLD_PATH/config/pg_leader.config
 
+CLUSTER_STATE_PIPE="$PGLD_PATH/script/test_stand/pipe/cluster_state_pipe"
+
 POSTGRES_BIN_PATH=$(pg_config --bindir)
 
 INTERFACE_NAME=$VETH_ROOT_NAME_PREFIX
@@ -125,14 +127,16 @@ function disconnect() {
     fi
 
     sudo ebtables -A FORWARD -i $INTERFACE_NAME"$2" -o $INTERFACE_NAME"$3" -j DROP
-
     echo $INTERFACE_NAME"$2" "-x->" $INTERFACE_NAME"$3"
+    
+    echo "disconnect $2 $3" > $CLUSTER_STATE_PIPE
 
     BOTH=$4
     BOTH=${BOTH,,}
     if [[ "$BOTH" == "both" ]]; then
         sudo ebtables -A FORWARD -i $INTERFACE_NAME"$3" -o $INTERFACE_NAME"$2" -j DROP
-            echo $INTERFACE_NAME"$3" "-x->" $INTERFACE_NAME"$2"
+        echo $INTERFACE_NAME"$3" "-x->" $INTERFACE_NAME"$2"
+        echo "disconnect $3 $2" > $CLUSTER_STATE_PIPE
     fi
 
 
@@ -296,6 +300,9 @@ function execute_command() {
 
 
 ####################### begin main() #######################
+
+mkfifo $CLUSTER_STATE_PIPE
+exec 3>$CLUSTER_STATE_PIPE
 
 mode=interactive
 silect=false

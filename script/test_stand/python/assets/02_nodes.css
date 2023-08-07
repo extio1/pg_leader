@@ -1,0 +1,23 @@
+node{
+    content: data(label);
+    /*text-halign: center;
+    text-valign: center;*/
+    color: black;
+    text-shadow: 2px 2px;
+}
+
+.follower{
+    background-color: #047e79;
+}
+
+.candidate{
+    background-color: #f2ce4d;
+}
+
+.leader{
+    background-color: #f5800d;
+}
+
+.current_node{
+    padding: 10px;
+}
