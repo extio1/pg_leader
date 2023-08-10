@@ -56,7 +56,7 @@ For more comfortable use you may append these strings to your shell configuratio
 Test stand - `N_NODES` network namespaces with virtual ethernet interfaces. There is a bridge in root namespace, all veth interfaces connected on it. Network package control implemented by ebtables, adding rules to the FORWARD chain.
 #### Usage
 1. Launch ``$ pgld_stnd_netinit`` . It will create `N_NODES` network namespaces and set up the network.
-2. Lanch ```$ pgld_stnd_monitor```.
+2. Lanch [```$ pgld_stnd_monitor```]().
 3. Use `$ pg_stnd_ctl` for interactive control.
     - **h, help, h, ?** - help.
 
@@ -77,6 +77,11 @@ Test stand - `N_NODES` network namespaces with virtual ethernet interfaces. Ther
     - **f, flush** - removes all network restrictions
 
     - **exit, q, quit** - exit the script
+
+#### Monitor.
+**! To use pgld_stnd_monitor you should have installed `tmux`.**  
+This utility will organize tmux panes layout and launch inside some of them `pgld_watchnode` and one instance of `pgld_stnd_ctl`. 
+
 
 ## Config file
 **Parameters**:
