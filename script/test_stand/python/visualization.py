@@ -10,30 +10,71 @@ import time
 import threading
 
 import sys
+import fcntl
 import os
+import copy
 
 pipe_cluster_state = "../pipe/cluster_state_pipe"
 pipe_leader = "../pipe/leader_pipe"
 cluster_pipe_lock = threading.Lock()
+init_graph_state=[]
+graph_elements = []
 
 def remove_items(from_list, item):
     return list(filter((item).__ne__, from_list))
 
+leader_id=-1
 def handle_request(req_str):
-    global graph_elements
-    global cluster_pipe_lock
-
+    global graph_elements 
+    global init_graph_state
     req_list = req_str.split()
+
+    print(req_list)
     if(req_list[0] == "disconnect"):
         for elements in graph_elements:
             for element in elements:
                 if(element['data'] == {'source': str(req_list[1]), 'target': str(req_list[2])}):
-                    print("++++++++++++\n", elements)
                     elements.remove(element)
-                    print("-----------\n", elements)
+    elif(req_list[0] == "reconnect"):
+        edge = {
+                    'data': {'source': str(req_list[1]), 'target': str(req_list[2])},
+                    'classes': 'edge_arrow'
+        }
+        add=False
+        try:
+            pos = graph_elements[0].index(edge)
+        except ValueError:
+            add=True
+
+        for i in range(0, n_nodes):
+            pos = init_graph_state[i].index(edge)
+            graph_elements[i].append(init_graph_state[i][pos])
+    elif(req_list[0] == "flush"):
+        graph_elements = copy.deepcopy(init_graph_state)
+    elif(req_list[0].find("leader") != -1):
+        current_graph = int(req_list[1])
+        aim_node_id = int(req_list[2])
+
+        if(aim_node_id != -1):
+            for i in range(0, n_nodes):
+                classes_value=''
+                if(i == aim_node_id):
+                    classes_value = "leader"
+                    leader_id = i
+                else: 
+                    classes_value = "follower"
+
+                if(current_graph == i):
+                    classes_value+=" current_node"
+
+                graph_elements[current_graph][i]['classes'] = classes_value
+        else:
+            if(leader_id != -1):
+                graph_elements[current_graph][leader_id]['classes'] = "follower"
+
+
 
 def updater_routine():
-    global pipe_cluster_state
     try:
         os.mkfifo(pipe_cluster_state)
         print("Named pipe created successfully!")
@@ -63,7 +104,6 @@ callback_output=[]
 for i in range(0, n_nodes):
     callback_output.append(Output('graph'+str(i), 'elements'))
 
-graph_elements = []
 for i in range(0, n_nodes):
     graph=[]
     for j in range(0, n_nodes):
@@ -148,7 +188,7 @@ leader_color = '#f5800d'
 layout = [
     dcc.Interval(
         id='watch-interval',
-        interval=1*1000, # in milliseconds
+        interval=1000, # in milliseconds
         n_intervals=0
     ),
 
@@ -178,6 +218,8 @@ layout = [
     )
 ]
 
+init_graph_state = copy.deepcopy(graph_elements)
+
 for i in range(0, n_nodes):
     layout.append(
         cyto.Cytoscape(
@@ -189,19 +231,35 @@ for i in range(0, n_nodes):
         )
     )
 
-app.layout = html.Div(layout)
+app.layout = html.Div(layout, style={'display': 'flex', 'flex-wrap': 'wrap'})
 
-updater.start()
+try:
+    os.mkfifo(pipe_cluster_state)
+    print("Named pipe created successfully!")
+except FileExistsError:
+    print("Named pipe already exists!")
+except OSError as e:
+    print(f"Named pipe creation failed: {e}")
 
-@app.callback(callback_output, 
-              Input('watch-interval', 'n_intervals'),
-              background=True,
-            manager=background_callback_manager,
-)
+f = open(pipe_cluster_state, "r", encoding='utf-8', errors='ignore')
+fd = f.fileno()
+flag = fcntl.fcntl(fd, fcntl.F_GETFL)
+fcntl.fcntl(fd, fcntl.F_SETFL, flag | os.O_NONBLOCK)
+
+@app.callback(callback_output, Input('watch-interval', 'n_intervals'))
 def update_data(n_intervals):
     global graph_elements
+    global f
 
-
+    while True:
+        try:
+            request = f.readline(100)
+            if(len(request) > 0):
+                handle_request(request)
+            else:
+                break
+        except OSError:
+            print("OSError")
 
     return graph_elements
 

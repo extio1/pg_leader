@@ -4,6 +4,7 @@
 #include "../include/ld_types.h"
 #include "../include/parser.h"
 #include "../include/node.h"
+#include "../include/visualization.h"
 
 #include "postmaster/bgworker.h"
 
@@ -12,16 +13,21 @@
 #include <math.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
 
 cluster_t* hacluster = NULL;
 node_t* node = NULL;
-unsigned int quorum_size = 0;
+unsigned int quorum_size = -1;
 routine_function_t routine = NULL;
 message_t* message_buffer = NULL;
+int cluster_info_pipe_fd = -1;
+char* pipe_cluster_state_path;
 
 static pl_error_t network_init(void);
+static pl_error_t visualisation_init(void);
 
 PGDLLEXPORT void
 node_init(Datum datum)
@@ -68,7 +74,10 @@ node_init(Datum datum)
         elog(LOG, "%s:%d", inet_ntoa(hacluster->node_addresses[i].sin_addr), hacluster->node_addresses[i].sin_port);
     }
 
-    quorum_size = ceil((float)(hacluster->n_nodes)/2.0);
+    STRICT(visualisation_init());
+
+    quorum_size = trunc((float)(hacluster->n_nodes)/2.0)+1;
+    elog(LOG, "qorum %d", quorum_size);
     srand(time(NULL)); // rand() will be used to assign random timeout
 
     routine = follower_routine;
@@ -127,6 +136,25 @@ network_init()
         }
 
         node->outsock[i] = outsock;
+    }
+
+    RETURN_SUCCESS();
+}
+
+pl_error_t
+visualisation_init()
+{
+
+    char* env;
+    SAFE(parse_visualization_config(&env));
+    elog(LOG, "%s", env);
+    pipe_cluster_state_path = strcat(env, "script/test_stand/pipe/cluster_state_pipe");
+    elog(LOG, "%s", pipe_cluster_state_path);
+
+    if(mkfifo(pipe_cluster_state_path, 0666) < 0){
+        if(errno != EEXIST){
+            POSIX_THROW(MKFIFO_ERROR);
+        }
     }
 
     RETURN_SUCCESS();

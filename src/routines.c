@@ -69,6 +69,7 @@ candidate_routine(void)
     elect_req.sender_id = node->shared->node_id;
     elect_req.sender_state = node->state;
     elect_req.sender_term = node->shared->current_node_term;
+    SAFE(assign_new_leader(-1)); // the leader is no one
 
     // send everyone except for itself election request
     for(int i = 0; i < hacluster->n_nodes; ++i){
@@ -118,7 +119,7 @@ leader_routine(void)
     struct timeval heartbeat_timeout = { .tv_sec = 0, .tv_usec = node->heartbeat_timeout };
     message_t heartbeat_message;
 
-    node->shared->leader_id = node->shared->node_id; // this node is a leader now
+    SAFE(assign_new_leader(node->shared->node_id)); // this node is a leader now
 
     heartbeat_message.type = Heartbeat;
     heartbeat_message.sender_id = node->shared->node_id;
@@ -178,7 +179,10 @@ handle_message_follower()
         leadlog("INFO", "As follower - got message type of Hearbeat from %d with %d term", s_id, s_term);
 
         // handle what leader changes and assign new term if incoming one is more
-        node->shared->leader_id = s_id;
+        if(s_id != node->shared->leader_id){
+            SAFE(assign_new_leader(s_id));
+        }
+
         if(s_term > node->shared->current_node_term){
             node->shared->current_node_term = s_term;
         }

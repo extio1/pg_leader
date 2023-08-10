@@ -2,6 +2,7 @@
 #define LD_NODE_H
 
 #include "ld_types.h"
+#include "error.h"
 
 extern node_t* node;
 
@@ -13,5 +14,6 @@ extern node_t* node;
 void assign_min_timeout(const int);
 void assign_max_timeout(const int);
 void assign_heartbeat_timeout(const int);
+pl_error_t assign_new_leader(const int);
 
 #endif /* LD_NODE_H */

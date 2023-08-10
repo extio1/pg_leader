@@ -60,7 +60,7 @@ function start {
             echo $PGLD_DB_PATHNAME_TEMPLATE"$NODE", $NAMESPACE_NAME: starting
 
             sudo ip netns exec $NAMESPACE_NAME sudo -u $USER $POSTGRES_BIN_PATH/pg_ctl                           \
-                -D $PGLD_DB_PATHNAME_TEMPLATE"$NODE" -l "$PGLD_DB_PATHNAME_TEMPLATE"_logfile$NODE                    \
+                -D $PGLD_DB_PATHNAME_TEMPLATE"$NODE" -l "$PGLD_DB_PATHNAME_TEMPLATE"_logfile$NODE                \
                 -o "-c shared_preload_libraries=$EXTENSION_NAME                                                  \
                     -c pg_leader.node_id=$NODE                                                                   \
                     -c pg_leader.n_nodes=$N_NODES                                                                \
@@ -70,6 +70,7 @@ function start {
                     -c pg_leader.heartbeat_timeout=$HEARTBEAT_TIMEOUT                                            \
                     -c pg_leader.enable_log=$ENABLE_LOG                                                          \
                     -c pg_leader.log_file=$LOG_NAME                                                              \
+                    -c pg_leader.pgld_path=$PGLD_PATH                                                            \
                     -p $PORT"                                                                                    \
                 start                                                                                            \
              
@@ -161,12 +162,14 @@ function reconnect() {
     sudo ebtables -D FORWARD -i $INTERFACE_NAME"$2" -o $INTERFACE_NAME"$3" -j DROP
 
     echo $INTERFACE_NAME"$2" "--->" $INTERFACE_NAME"$3"
+    echo "reconnect $2 $3" > $CLUSTER_STATE_PIPE
 
     BOTH=$4
     BOTH=${BOTH,,}
     if [[ "$BOTH" == "both" ]]; then
         sudo ebtables -D FORWARD -i $INTERFACE_NAME"$3" -o $INTERFACE_NAME"$2" -j DROP
         echo $INTERFACE_NAME"$3" "--->" $INTERFACE_NAME"$2"
+        echo "reconnect $3 $2" > $CLUSTER_STATE_PIPE
     fi
 }
 
@@ -186,6 +189,9 @@ function brainsplit() {
         do
             sudo ebtables -A FORWARD -i $INTERFACE_NAME"$NODE1" -o $INTERFACE_NAME"$NODE2" -j DROP
             sudo ebtables -A FORWARD -i $INTERFACE_NAME"$NODE2" -o $INTERFACE_NAME"$NODE1" -j DROP
+
+            echo "disconnect $NODE1 $NODE2" > $CLUSTER_STATE_PIPE
+            echo "disconnect $NODE2 $NODE1" > $CLUSTER_STATE_PIPE
         done
     done 
 
@@ -208,6 +214,9 @@ function brainjoin() {
         do
             sudo ebtables -D FORWARD -i $INTERFACE_NAME"$NODE1" -o $INTERFACE_NAME"$NODE2" -j DROP
             sudo ebtables -D FORWARD -i $INTERFACE_NAME"$NODE2" -o $INTERFACE_NAME"$NODE1" -j DROP
+
+            echo "reconnect $NODE1 $NODE2" > $CLUSTER_STATE_PIPE
+            echo "reconnect $NODE2 $NODE1" > $CLUSTER_STATE_PIPE
         done
     done 
 
@@ -244,6 +253,7 @@ function stat() {
 function flush() {
     sudo ebtables --flush FORWARD
     echo "Flushed"
+    echo "flush" > $CLUSTER_STATE_PIPE
 }
 
 function interactive_mode() {

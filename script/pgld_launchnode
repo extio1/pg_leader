@@ -54,4 +54,5 @@ postgres -D "$PGLD_DB_PATHNAME_TEMPLATE"$ID                                     
              -c pg_leader.heartbeat_timeout=$HEARTBEAT_TIMEOUT                                            \
              -c pg_leader.enable_log=$ENABLE_LOG                                                          \
              -c pg_leader.log_file=$LOG_NAME                                                              \
+             -c pg_leader.pgld_path=$PGLD_PATH                                                            \
              -p $PORT

@@ -185,3 +185,24 @@ parse_logger_config(char** path, bool* enable){
 
     RETURN_SUCCESS();
 }
+
+
+pl_error_t
+parse_visualization_config(char** path)
+{
+
+    DefineCustomStringVariable(
+        "pg_leader.pgld_path",
+        "Visualization parameter",
+        "envvar PGLD_PATH",
+        path,
+        "",
+        PGC_SIGHUP,
+        0,
+        NULL,
+        NULL,
+        NULL
+    );
+
+    RETURN_SUCCESS();
+}

@@ -13,6 +13,8 @@ typedef enum error_code
     //POSIX errors
     MALLOC_ERROR,
     FOPEN_ERROR,
+    MKFIFO_ERROR,
+    OPEN_ERROR,
 
     //parser errors
     WRONG_IPADDR_ERROR,
