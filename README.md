@@ -10,7 +10,7 @@ The job implements the algorithm of choosing the leader. It has scripts to obser
     - **_pgld_watchnode_** for observing node condition: it **node ID**, **term** and **leader ID** on current node (leader ID may probably be different on nodes, the aim of this extension that each node has the same leader ID)
     - **_test_stand/pgld_stnd_netinit.sh_** are using for initialization network namespaces and network between them. 
     - **_test_stand/pgld_stnd_ctl_** are using for interactive control of the test stand.
-    - **_test_stand/pgld_stnd_monitor_** TODO
+    - **_test_stand/pgld_stnd_monitor_** accept tmux panes layout and launch ctl.
 
 ## Installation
 >Launching nodes, cluster observing and launching test stand may be carried out using scripts from ./script directory.
