@@ -20,9 +20,6 @@ cluster_pipe_lock = threading.Lock()
 init_graph_state=[]
 graph_elements = []
 
-def remove_items(from_list, item):
-    return list(filter((item).__ne__, from_list))
-
 leader_id=-1
 def handle_request(req_str):
     global graph_elements 
@@ -46,31 +43,11 @@ def handle_request(req_str):
         except ValueError:
             add=True
 
-        for i in range(0, n_nodes):
+        for i in range(0, n_graphs):
             pos = init_graph_state[i].index(edge)
             graph_elements[i].append(init_graph_state[i][pos])
     elif(req_list[0] == "flush"):
         graph_elements = copy.deepcopy(init_graph_state)
-    elif(req_list[0].find("leader") != -1):
-        current_graph = int(req_list[1])
-        aim_node_id = int(req_list[2])
-
-        if(aim_node_id != -1):
-            for i in range(0, n_nodes):
-                classes_value=''
-                if(i == aim_node_id):
-                    classes_value = "leader"
-                    leader_id = i
-                else: 
-                    classes_value = "follower"
-
-                if(current_graph == i):
-                    classes_value+=" current_node"
-
-                graph_elements[current_graph][i]['classes'] = classes_value
-        else:
-            if(leader_id != -1):
-                graph_elements[current_graph][leader_id]['classes'] = "follower"
 
 
 
@@ -99,25 +76,20 @@ else:
     n_nodes = sys.argv[1]
 
 n_nodes = int(n_nodes)
+n_graphs = 1
 
 callback_output=[]
 for i in range(0, n_nodes):
     callback_output.append(Output('graph'+str(i), 'elements'))
 
-for i in range(0, n_nodes):
+for i in range(0, n_graphs):
     graph=[]
     for j in range(0, n_nodes):
         node = str(j)
-        if(j == i):
-            node = {
-                'data': {'id': node, 'label': node},
-                'classes': 'follower current_node'
-            }
-        else:
-            node = {
-                'data': {'id': node, 'label': node},
-                'classes': 'follower'
-            } 
+        node = {
+            'data': {'id': node, 'label': node},
+            'classes': 'follower'
+        } 
         graph.append(node)
 
     for j in range(0, n_nodes):
@@ -192,35 +164,36 @@ layout = [
         n_intervals=0
     ),
 
-    html.Div(
-        className="ctl ctl:hover",
-        children=[
-            dcc.Markdown(
-                children=
-                '''
-                - **start** \[ID|all\]     
-                - **stop** \[ID/all\]     
-                - **disconnect** ONE ANOTHER \[both\]    
-                - **reconnect** ONE ANOTHER \[both\]  
-                - **brainsplit** FIRST_GROUP_IDs; SECOND_GROUP_IDs  
-                - **brainjoin** FIRST_GROUP_IDs; SECOND_GROUP_IDs   
-                - **flush** 
-                ''',
-            ),
-            dcc.Input(
-                id="command_input",
-                type='text',
-                placeholder="write a command",
-                style={'height': '70px', 'width': '300px'}
-            )
-        ],
-        style={'width': '305px', 'height': '300px', 'display': 'absolute'}
-    )
+#    html.Div(
+#        className="ctl ctl:hover",
+#        children=[
+#            dcc.Markdown(
+#                children=
+#                '''
+#                - **start** \[ID|all\]     
+#                - **stop** \[ID/all\]     
+#                - **disconnect** ONE ANOTHER \[both\]    
+#                - **reconnect** ONE ANOTHER \[both\]  
+##                - **brainsplit** FIRST_GROUP_IDs; SECOND_GROUP_IDs  
+ #               - **brainjoin** FIRST_GROUP_IDs; SECOND_GROUP_IDs   
+ #               - **flush** 
+ #               ''',
+ #           ),
+ #           dcc.Input(
+ #               id="command_input",
+ ##               type='text',
+  #              placeholder="write a command",
+  #              style={'height': '70px', 'width': '300px'}
+  #          )
+  #      ],
+  #      style={'width': '305px', 'height': '300px', 'display': 'absolute'}
+  #  )
+    
 ]
 
 init_graph_state = copy.deepcopy(graph_elements)
 
-for i in range(0, n_nodes):
+for i in range(0, n_graphs):
     layout.append(
         cyto.Cytoscape(
             stylesheet=graph_stylesheet,
@@ -246,7 +219,7 @@ fd = f.fileno()
 flag = fcntl.fcntl(fd, fcntl.F_GETFL)
 fcntl.fcntl(fd, fcntl.F_SETFL, flag | os.O_NONBLOCK)
 
-@app.callback(callback_output, Input('watch-interval', 'n_intervals'))
+@app.callback(Output('graph0', 'elements'), Input('watch-interval', 'n_intervals'))
 def update_data(n_intervals):
     global graph_elements
     global f
@@ -261,7 +234,7 @@ def update_data(n_intervals):
         except OSError:
             print("OSError")
 
-    return graph_elements
+    return graph_elements[0]
 
 if __name__ == '__main__':
     app.run_server(debug=True)
