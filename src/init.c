@@ -4,7 +4,6 @@
 #include "../include/ld_types.h"
 #include "../include/parser.h"
 #include "../include/node.h"
-#include "../include/visualization.h"
 
 #include "postmaster/bgworker.h"
 
@@ -27,7 +26,6 @@ int cluster_info_pipe_fd = -1;
 char* pipe_cluster_state_path;
 
 static pl_error_t network_init(void);
-static pl_error_t visualisation_init(void);
 
 PGDLLEXPORT void
 node_init(Datum datum)
@@ -73,8 +71,6 @@ node_init(Datum datum)
     for(int i = 0 ; i < hacluster->n_nodes; ++i){
         elog(LOG, "%s:%d", inet_ntoa(hacluster->node_addresses[i].sin_addr), hacluster->node_addresses[i].sin_port);
     }
-
-    STRICT(visualisation_init());
 
     quorum_size = trunc((float)(hacluster->n_nodes)/2.0)+1;
     elog(LOG, "qorum %d", quorum_size);
@@ -141,21 +137,3 @@ network_init()
     RETURN_SUCCESS();
 }
 
-pl_error_t
-visualisation_init()
-{
-
-    char* env;
-    SAFE(parse_visualization_config(&env));
-    elog(LOG, "%s", env);
-    pipe_cluster_state_path = strcat(env, "script/test_stand/pipe/cluster_state_pipe");
-    elog(LOG, "%s", pipe_cluster_state_path);
-
-    if(mkfifo(pipe_cluster_state_path, 0666) < 0){
-        if(errno != EEXIST){
-            POSIX_THROW(MKFIFO_ERROR);
-        }
-    }
-
-    RETURN_SUCCESS();
-}

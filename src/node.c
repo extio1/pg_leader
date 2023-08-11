@@ -1,5 +1,4 @@
 #include "../include/node.h"
-#include "../include/visualization.h"
 #include "../include/error.h"
 
 #include <postgres.h>
@@ -36,21 +35,7 @@ assign_heartbeat_timeout(const int val)
 pl_error_t
 assign_new_leader(const int val)
 {    
-    char message[20];
-
     node->shared->leader_id = val;
 
-    if( (cluster_info_pipe_fd = open(pipe_cluster_state_path, O_WRONLY)) < 0){
-        POSIX_THROW(OPEN_ERROR);
-    }
-
-    sprintf(message, "leader %d %d\n", node->shared->node_id, node->shared->leader_id);
-
-    static int size = 6 + 2 + 2 + 2;
-    if( write(cluster_info_pipe_fd, message, size) < 0 ){
-        POSIX_THROW(WRITE_ERROR);
-    }
-
-    close(cluster_info_pipe_fd);
     RETURN_SUCCESS();
 }
