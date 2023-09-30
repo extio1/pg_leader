@@ -1,6 +1,6 @@
 # pg_leader
 PostgreSQL extension. RAFT-based algorithm realization of consensus algorithm of choosing the leader.   
-The job implements the algorithm of choosing the leader. It has scripts to observe which one ID is leader according to the opinion of some node (the aim that every node has the same opinion). Besides, there is a test stand allows to interactively, by writing your own scripts control the condition of each node (turned on/off) and network between them. 
+The job implements the algorithm of choosing the leader. It has scripts to observe which one ID is leader according to the opinion of some node (the aim that every node has the same opinion). Besides, there is a test stand allows to interactively or by writing your own scripts control the condition of each node (turned on/off) and network between them. (Done with linux namespaces, feature only for Linux)
 
 ## Contents
 - [/config](./config/pg_leader.config) contains the configuration file of pg_leader extension.
